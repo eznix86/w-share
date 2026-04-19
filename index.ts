@@ -39,4 +39,8 @@ async function main(): Promise<void> {
   await program.parseAsync(process.argv);
 }
 
-await main();
+main().catch((error: unknown) => {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(message);
+  process.exit(1);
+});
