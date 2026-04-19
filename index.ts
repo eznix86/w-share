@@ -13,26 +13,30 @@ function printVersion(): void {
   renderBrandIntro({ version: VERSION });
 }
 
-if (process.argv.includes("--version") || process.argv.includes("-V")) {
-  printVersion();
-  process.exit(0);
+async function main(): Promise<void> {
+  if (process.argv.includes("--version") || process.argv.includes("-V")) {
+    printVersion();
+    process.exit(0);
+  }
+
+  const program = new Command();
+
+  program
+    .name("w")
+    .description("Lightweight HTTP tunnel for local sites");
+
+  program
+    .command("version")
+    .description("Show the installed w version")
+    .action(() => {
+      printVersion();
+    });
+
+  program.addCommand(serveCommand());
+  program.addCommand(httpCommand());
+  program.addCommand(configCommand());
+
+  await program.parseAsync(process.argv);
 }
 
-const program = new Command();
-
-program
-  .name("w")
-  .description("Lightweight HTTP tunnel for local sites");
-
-program
-  .command("version")
-  .description("Show the installed w version")
-  .action(() => {
-    printVersion();
-  });
-
-program.addCommand(serveCommand());
-program.addCommand(httpCommand());
-program.addCommand(configCommand());
-
-await program.parseAsync(process.argv);
+await main();
