@@ -174,9 +174,6 @@ async function forwardRequest(targetUrl: URL, message: RequestMessage) {
   const requestUrl = new URL(message.path, targetUrl);
   const headers = new Headers(message.headers);
   headers.set("host", targetUrl.host);
-  headers.set("x-forwarded-host", requestUrl.host);
-  headers.set("x-forwarded-proto", requestUrl.protocol.replace(/:$/, ""));
-  headers.set("x-forwarded-port", requestUrl.port || (requestUrl.protocol === "https:" ? "443" : "80"));
 
   let response: Response;
 

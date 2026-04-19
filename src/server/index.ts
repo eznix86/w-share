@@ -79,12 +79,17 @@ export function startServer(options: StartServerOptions): ServerHandle {
           return new Response("Payload too large", { status: 413 });
         }
 
+        const headers = sanitizeHeaders(request.headers);
+        headers["x-forwarded-host"] = host;
+        headers["x-forwarded-proto"] = url.protocol.replace(/:$/, "");
+        headers["x-forwarded-port"] = url.port || (url.protocol === "https:" ? "443" : "80");
+
         const payload = {
           type: "request",
           id: requestId,
           method: request.method,
           path,
-          headers: sanitizeHeaders(request.headers),
+          headers,
           bodyBase64: bodyToBase64(bodyBuffer),
         };
 
