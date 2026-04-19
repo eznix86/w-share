@@ -1,10 +1,10 @@
-import { intro, isCancel, outro, password, spinner, text } from "@clack/prompts";
+import { isCancel, outro, password, spinner, text } from "@clack/prompts";
 import { chmod, mkdir, writeFile } from "node:fs/promises";
-import chalk from "chalk";
 import os from "node:os";
 import path from "node:path";
 import { WS_PATH } from "./constants.ts";
 import { decodeMessage, encodeMessage } from "./protocol.ts";
+import { renderBrandIntro } from "./brand.ts";
 import { clientConfigSchema } from "./types.ts";
 
 type ClientConfig = {
@@ -44,35 +44,7 @@ export async function loadOrPromptClientServer(explicitServer?: string): Promise
 export async function promptAndSaveClientConfig(currentConfig?: ClientConfig): Promise<Required<ClientConfig>> {
   const config = currentConfig ?? await readClientConfig();
 
-  const INTRO_GRADIENTS = [
-    [213, 177, 141, 105],
-    [214, 208, 202, 196],
-    [51, 50, 49, 48],
-    [227, 221, 215, 209],
-  ] as const;
-
-  const lines = [
-    "             ",
-    "    ██     ██",
-    "    ██     ██",
-    "    ██  █  ██  A self-hosted gateway to tunnel local dev to the internet.",
-    "    ██ ███ ██",
-    "     ███ ███",
-  ];
-
-  function pickStop(gradient: readonly number[], index: number, total: number) {
-    const t = total <= 1 ? 0 : index / (total - 1);
-    return gradient[Math.round(t * (gradient.length - 1))] ?? gradient[0] ?? 255;
-  }
-
-  const gradient = INTRO_GRADIENTS[Math.floor(Math.random() * INTRO_GRADIENTS.length)] ?? INTRO_GRADIENTS[0];
-
-  intro("");
-
-  lines.forEach((line, i) =>
-    console.log(chalk.ansi256(pickStop(gradient, i, lines.length))(line))
-  );
-
+  renderBrandIntro();
 
   const serverValue = await text({
     message: "Your w-share server URL",
