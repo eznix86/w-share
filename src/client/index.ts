@@ -1,0 +1,297 @@
+import chalk from "chalk";
+import ora from "ora";
+import { CLIENT_RECONNECT_DELAY_MS, MAX_HTTP_BODY_BYTES, PING_INTERVAL_MS, WS_PATH } from "../shared/constants.ts";
+import { decodeMessage, encodeMessage } from "../shared/protocol.ts";
+import type { RegisteredMessage, RequestMessage } from "../shared/types.ts";
+import { base64ToUint8Array, bodyToBase64, normalizeTarget, sanitizeResponseHeaders } from "../shared/utils.ts";
+
+type StartClientOptions = {
+  server: string;
+  token: string;
+  target: string;
+};
+
+export async function startClient(options: StartClientOptions): Promise<void> {
+  const targetUrl = normalizeTarget(options.target);
+  const wsUrl = buildWebSocketUrl(options.server);
+  const spinner = ora(`Connecting to ${wsUrl.host}`).start();
+
+  await connectLoop(wsUrl, options.token, targetUrl, spinner);
+}
+
+async function connectLoop(wsUrl: URL, token: string, targetUrl: URL, spinner: ReturnType<typeof ora>): Promise<void> {
+  while (true) {
+    try {
+      await runSession(wsUrl, token, targetUrl, spinner);
+      return;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      spinner.fail(message);
+      await Bun.sleep(CLIENT_RECONNECT_DELAY_MS);
+      spinner.start(`Reconnecting to ${wsUrl.host}`);
+    }
+  }
+}
+
+async function runSession(wsUrl: URL, token: string, targetUrl: URL, spinner: ReturnType<typeof ora>): Promise<void> {
+  const socket = new WebSocket(wsUrl);
+
+  await new Promise<void>((resolve, reject) => {
+    let heartbeat: Timer | undefined;
+
+    socket.addEventListener("open", () => {
+      socket.send(encodeMessage({ type: "register", token }));
+      heartbeat = setInterval(() => {
+        if (socket.readyState === WebSocket.OPEN) {
+          socket.send(encodeMessage({ type: "ping" }));
+        }
+      }, PING_INTERVAL_MS);
+    });
+
+    socket.addEventListener("message", async (event) => {
+      const message = decodeMessage(String(event.data));
+
+      if (!message) {
+        return;
+      }
+
+      if (message.type === "registered") {
+        handleRegistered(message, targetUrl, spinner);
+        return;
+      }
+
+      if (message.type === "request") {
+        const startedAt = Date.now();
+        const response = await forwardRequest(targetUrl, message);
+        logForwardedRequest(message, response, Date.now() - startedAt);
+        socket.send(encodeMessage(response));
+        return;
+      }
+
+      if (message.type === "error") {
+        clearInterval(heartbeat);
+        reject(new Error(message.message));
+        socket.close();
+      }
+    });
+
+    socket.addEventListener("close", () => {
+      clearInterval(heartbeat);
+      reject(new Error("Connection closed"));
+    });
+
+    socket.addEventListener("error", () => {
+      clearInterval(heartbeat);
+      reject(new Error("WebSocket error"));
+    });
+  });
+}
+
+function handleRegistered(message: RegisteredMessage, targetUrl: URL, spinner: ReturnType<typeof ora>): void {
+  spinner.succeed(`Assigned URL ${chalk.cyan(message.url)}`);
+  console.log(chalk.gray(`Forwarding to ${targetUrl.toString()}`));
+}
+
+function logForwardedRequest(
+  request: RequestMessage,
+  response: { status: number; bodyBase64?: string },
+  durationMs: number,
+): void {
+  const timestamp = chalk.dim(formatTimestamp(new Date()));
+  const method = chalk.cyan(request.method.padEnd(6, " "));
+  const path = truncatePath(request.path, 48).padEnd(48, " ");
+  const status = colorStatus(response.status);
+  const duration = chalk.gray(`${String(durationMs).padStart(4, " ")}ms`);
+  const size = formatResponseSize(response);
+
+  console.log(`${timestamp} ${method} ${path} ${status} ${duration} ${size}`);
+}
+
+function formatTimestamp(date: Date): string {
+  return date.toLocaleTimeString("en-GB", {
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+function colorStatus(status: number): string {
+  const printable = String(status).padStart(3, " ");
+
+  if (status >= 500) {
+    return chalk.red(printable);
+  }
+
+  if (status >= 400) {
+    return chalk.redBright(printable);
+  }
+
+  if (status >= 300) {
+    return chalk.yellow(printable);
+  }
+
+  return chalk.green(printable);
+}
+
+function formatResponseSize(response: { status: number; bodyBase64?: string }): string {
+  if (response.status >= 500 && !response.bodyBase64) {
+    return chalk.red("error");
+  }
+
+  const bytes = response.bodyBase64 ? Buffer.from(response.bodyBase64, "base64").byteLength : 0;
+
+  if (response.status >= 500) {
+    return chalk.red(formatBytes(bytes));
+  }
+
+  return chalk.gray(formatBytes(bytes));
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) {
+    return `${bytes}b`;
+  }
+
+  const kib = bytes / 1024;
+  if (kib < 1024) {
+    return `${kib.toFixed(1)}kb`;
+  }
+
+  const mib = kib / 1024;
+  return `${mib.toFixed(1)}mb`;
+}
+
+function truncatePath(path: string, maxLength: number): string {
+  if (path.length <= maxLength) {
+    return path;
+  }
+
+  return `${path.slice(0, Math.max(0, maxLength - 1))}…`;
+}
+
+async function forwardRequest(targetUrl: URL, message: RequestMessage) {
+  const requestUrl = new URL(message.path, targetUrl);
+  const headers = new Headers(message.headers);
+  headers.set("host", targetUrl.host);
+  headers.set("x-forwarded-host", requestUrl.host);
+  headers.set("x-forwarded-proto", requestUrl.protocol.replace(/:$/, ""));
+  headers.set("x-forwarded-port", requestUrl.port || (requestUrl.protocol === "https:" ? "443" : "80"));
+
+  let response: Response;
+
+  try {
+    response = await fetchWithLocalTlsFallback(requestUrl, {
+      method: message.method,
+      headers,
+      body: base64ToUint8Array(message.bodyBase64),
+      redirect: "manual",
+    });
+  } catch (error) {
+    const messageText = error instanceof Error ? error.message : "Upstream request failed";
+
+    return {
+      type: "response" as const,
+      id: message.id,
+      status: 502,
+      headers: {
+        "content-type": "text/plain; charset=utf-8",
+      },
+      bodyBase64: Buffer.from(messageText).toString("base64"),
+    };
+  }
+
+  const contentLength = Number(response.headers.get("content-length") ?? "0");
+  if (Number.isFinite(contentLength) && contentLength > MAX_HTTP_BODY_BYTES) {
+    return {
+      type: "response" as const,
+      id: message.id,
+      status: 502,
+      headers: {
+        "content-type": "text/plain; charset=utf-8",
+      },
+      bodyBase64: Buffer.from("Upstream response too large").toString("base64"),
+    };
+  }
+
+  const body = await response.arrayBuffer();
+
+  if (body.byteLength > MAX_HTTP_BODY_BYTES) {
+    return {
+      type: "response" as const,
+      id: message.id,
+      status: 502,
+      headers: {
+        "content-type": "text/plain; charset=utf-8",
+      },
+      bodyBase64: Buffer.from("Upstream response too large").toString("base64"),
+    };
+  }
+
+  return {
+    type: "response" as const,
+    id: message.id,
+    status: response.status,
+    headers: sanitizeResponseHeaders(response.headers),
+    bodyBase64: bodyToBase64(body),
+  };
+}
+
+async function fetchWithLocalTlsFallback(url: URL, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, init);
+  } catch (error) {
+    if (!shouldRetryWithInsecureLocalTls(url, error)) {
+      throw error;
+    }
+
+    return fetch(url, {
+      ...init,
+      tls: {
+        rejectUnauthorized: false,
+      },
+    });
+  }
+}
+
+function shouldRetryWithInsecureLocalTls(url: URL, error: unknown): boolean {
+  if (url.protocol !== "https:") {
+    return false;
+  }
+
+  const host = url.hostname.toLowerCase();
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+
+  const looksLikeLocalDevHost = host === "localhost"
+    || host.endsWith(".test")
+    || host.endsWith(".localhost")
+    || host.endsWith(".local");
+
+  const looksLikeTlsVerificationFailure = message.includes("unable to verify the first certificate")
+    || message.includes("self-signed certificate")
+    || message.includes("self signed certificate")
+    || message.includes("certificate has expired")
+    || message.includes("unable to get local issuer certificate")
+    || message.includes("hostname/ip does not match certificate");
+
+  return looksLikeLocalDevHost && looksLikeTlsVerificationFailure;
+}
+
+function buildWebSocketUrl(server: string): URL {
+  const input = server.trim();
+
+  if (/^wss?:\/\//i.test(input)) {
+    return new URL(input);
+  }
+
+  if (/^https?:\/\//i.test(input)) {
+    const url = new URL(input);
+    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+    url.pathname = WS_PATH;
+    return url;
+  }
+
+  const url = new URL(`wss://${input}`);
+  url.pathname = WS_PATH;
+  return url;
+}

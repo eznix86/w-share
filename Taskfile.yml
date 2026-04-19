@@ -1,0 +1,60 @@
+version: '3'
+
+vars:
+  IMAGE_NAME: w
+  BUILDER_NAME: w-share-multiarch
+
+  REGISTRY:
+    sh: |
+      if [ -n "${REGISTRY:-}" ]; then
+        printf "%s" "$REGISTRY"
+      else
+        echo "REGISTRY is required. Example: REGISTRY=registry.personal.com task image-push" >&2
+        exit 1
+      fi
+
+  TAG:
+    sh: |
+      printf "%s" "${TAG:-1.0.0-alpha.1}"
+
+  LOCAL_BINARY:
+    sh: |
+      printf "%s/.local/bin/w" "$HOME"
+
+  FULL_IMAGE: "{{.REGISTRY}}/{{.IMAGE_NAME}}:{{.TAG}}"
+
+tasks:
+  build:
+    desc: Build the local macOS standalone binary
+    cmds:
+      - mkdir -p "$(dirname "{{.LOCAL_BINARY}}")"
+      - bun build --compile --outfile "{{.LOCAL_BINARY}}" ./index.ts
+
+  image:builder:
+    desc: Ensure a multi-platform buildx builder exists
+    cmds:
+      - |
+        if ! docker buildx inspect "{{.BUILDER_NAME}}" >/dev/null 2>&1; then
+          docker buildx create \
+            --name "{{.BUILDER_NAME}}" \
+            --driver docker-container \
+            --use
+        else
+          docker buildx use "{{.BUILDER_NAME}}"
+        fi
+      - docker buildx inspect "{{.BUILDER_NAME}}" --bootstrap >/dev/null
+
+  image-build:
+    desc: Build the Docker image locally for the current platform
+    deps: [image:builder]
+    cmd: docker buildx build --builder "{{.BUILDER_NAME}}" -t "{{.FULL_IMAGE}}" --load .
+
+  image-build-multiarch:
+    desc: Build the multi-arch Docker image without pushing
+    deps: [image:builder]
+    cmd: docker buildx build --builder "{{.BUILDER_NAME}}" --platform linux/amd64,linux/arm64 -t "{{.FULL_IMAGE}}" .
+
+  image-push:
+    desc: Build and push the multi-arch Docker image
+    deps: [image:builder]
+    cmd: docker buildx build --builder "{{.BUILDER_NAME}}" --platform linux/amd64,linux/arm64 -t "{{.FULL_IMAGE}}" --push .

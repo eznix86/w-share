@@ -1,0 +1,7 @@
+export const DEFAULT_SERVER_PORT = 8080;
+export const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+export const MAX_PENDING_REQUESTS = 1_000;
+export const MAX_HTTP_BODY_BYTES = 1_048_576;
+export const WS_PATH = "/ws";
+export const PING_INTERVAL_MS = 15_000;
+export const CLIENT_RECONNECT_DELAY_MS = 2_000;
