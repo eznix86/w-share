@@ -113,7 +113,11 @@ jobs:
         shell: bash
         run: |
           mkdir -p dist
-          bun build --compile --target=${{ matrix.target }} --outfile dist/${{ matrix.asset_name }} ./index.ts
+          bun build --compile --bytecode --target=${{ matrix.target }} --outfile dist/${{ matrix.asset_name }} ./index.ts
+
+      - name: Ad-hoc sign (macOS)
+        if: startsWith(matrix.target, 'bun-darwin')
+        run: codesign --sign - --force dist/${{ matrix.asset_name }}
 
       - name: Upload binary
         uses: actions/upload-artifact@v7
