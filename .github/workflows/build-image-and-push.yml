@@ -76,7 +76,7 @@ jobs:
           retention-days: 1
 
   build-binaries:
-    runs-on: ubuntu-24.04
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
     strategy:
@@ -85,16 +85,19 @@ jobs:
         include:
           - target: bun-linux-x64
             asset_name: w-linux-x64
+            runner: ubuntu-24.04
           - target: bun-linux-arm64
             asset_name: w-linux-arm64
+            runner: ubuntu-24.04-arm
           - target: bun-darwin-x64
             asset_name: w-darwin-x64
+            runner: macos-15-intel
           - target: bun-darwin-arm64
             asset_name: w-darwin-arm64
+            runner: macos-14
           - target: bun-windows-x64
             asset_name: w-windows-x64.exe
-          - target: bun-windows-arm64
-            asset_name: w-windows-arm64.exe
+            runner: windows-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -103,9 +106,11 @@ jobs:
         uses: oven-sh/setup-bun@v2
 
       - name: Install dependencies
+        shell: bash
         run: bun install --frozen-lockfile
 
       - name: Compile binary
+        shell: bash
         run: |
           mkdir -p dist
           bun build --compile --target=${{ matrix.target }} --outfile dist/${{ matrix.asset_name }} ./index.ts
