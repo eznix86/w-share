@@ -2,6 +2,7 @@ import { Command } from "commander";
 import { startClient } from "../client/index.ts";
 import { renderBrandIntro } from "../shared/brand.ts";
 import { loadOrPromptClientServer, loadOrPromptClientToken } from "../shared/config.ts";
+import { renderUpdateNotice } from "../shared/update-notice.ts";
 import { VERSION } from "../shared/version.ts";
 
 export function httpCommand(): Command {
@@ -14,6 +15,7 @@ export function httpCommand(): Command {
     .option("--server <server>", "Server URL, e.g. https://share.example.com")
     .action(async (target, options) => {
       renderBrandIntro(VERSION);
+      await renderUpdateNotice(VERSION);
 
       const server = await loadOrPromptClientServer(typeof options.server === "string" ? options.server : undefined);
       const token = await loadOrPromptClientToken();

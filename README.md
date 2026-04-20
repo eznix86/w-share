@@ -2,6 +2,32 @@
 
 A self-hosted alternative to ngrok to tunnel local HTTP to the web.
 
+## Install
+
+The release installer downloads the matching macOS or Linux binary for your machine, verifies it with `checksums-sha256.txt`, and installs it to `~/.local/bin/w` by default.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/eznix86/w-share/main/install.sh | sh
+```
+
+Pin a specific release by passing the tag explicitly.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/eznix86/w-share/main/install.sh | sh -s -- v1.0.1-alpha.0
+```
+
+Override the install directory with `W_INSTALL_DIR` if you want a different target path.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/eznix86/w-share/main/install.sh | W_INSTALL_DIR=/usr/local/bin sh -s -- v1.0.1-alpha.0
+```
+
+If `~/.local/bin` is not already in your `PATH`, add it in your shell profile:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
 ## Run the server
 
 ```bash

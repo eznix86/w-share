@@ -5,6 +5,7 @@ import { configCommand } from "./src/commands/config.ts";
 import { httpCommand } from "./src/commands/http.ts";
 import { renderBrandIntro } from "./src/shared/brand.ts";
 import { serveCommand } from "./src/commands/serve.ts";
+import { renderUpdateNotice } from "./src/shared/update-notice.ts";
 import { VERSION } from "./src/shared/version.ts";
 
 function printVersion(): void {
@@ -14,6 +15,7 @@ function printVersion(): void {
 async function main(): Promise<void> {
   if (process.argv.includes("--version") || process.argv.includes("-V")) {
     printVersion();
+    await renderUpdateNotice(VERSION);
     process.exit(0);
   }
 
@@ -26,8 +28,9 @@ async function main(): Promise<void> {
   program
     .command("version")
     .description("Show the installed w version")
-    .action(() => {
+    .action(async () => {
       printVersion();
+      await renderUpdateNotice(VERSION);
     });
 
   program.addCommand(serveCommand());
