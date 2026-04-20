@@ -6,6 +6,7 @@ import { WS_PATH } from "./constants.ts";
 import { decodeMessage, encodeMessage } from "./protocol.ts";
 import { renderBrandIntro } from "./brand.ts";
 import { clientConfigSchema } from "./types.ts";
+import { VERSION } from "./version.ts";
 
 type ClientConfig = {
   token?: string;
@@ -44,7 +45,7 @@ export async function loadOrPromptClientServer(explicitServer?: string): Promise
 export async function promptAndSaveClientConfig(currentConfig?: ClientConfig): Promise<Required<ClientConfig>> {
   const config = currentConfig ?? await readClientConfig();
 
-  renderBrandIntro();
+  renderBrandIntro(VERSION);
 
   const serverValue = await text({
     message: "Your w-share server URL",

@@ -104,6 +104,8 @@ jobs:
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.11
 
       - name: Install dependencies
         shell: bash
@@ -113,11 +115,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p dist
-          bun build --compile --bytecode --target=${{ matrix.target }} --outfile dist/${{ matrix.asset_name }} ./index.ts
-
-      - name: Ad-hoc sign (macOS)
-        if: startsWith(matrix.target, 'bun-darwin')
-        run: codesign --sign - --force dist/${{ matrix.asset_name }}
+          bun build --compile --target=${{ matrix.target }} --outfile dist/${{ matrix.asset_name }} ./index.ts
 
       - name: Upload binary
         uses: actions/upload-artifact@v7

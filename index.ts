@@ -1,16 +1,14 @@
 #!/usr/bin/env bun
 
 import { Command } from "commander";
-import packageJson from "./package.json";
 import { configCommand } from "./src/commands/config.ts";
 import { httpCommand } from "./src/commands/http.ts";
 import { renderBrandIntro } from "./src/shared/brand.ts";
 import { serveCommand } from "./src/commands/serve.ts";
-
-const VERSION = packageJson.version;
+import { VERSION } from "./src/shared/version.ts";
 
 function printVersion(): void {
-  renderBrandIntro({ version: VERSION });
+  renderBrandIntro(VERSION);
 }
 
 async function main(): Promise<void> {

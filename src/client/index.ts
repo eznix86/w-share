@@ -1,5 +1,5 @@
 import chalk from "chalk";
-import ora from "ora";
+import { log, outro, spinner, taskLog } from "@clack/prompts";
 import { CLIENT_RECONNECT_DELAY_MS, MAX_HTTP_BODY_BYTES, PING_INTERVAL_MS, WS_PATH } from "../shared/constants.ts";
 import { decodeMessage, encodeMessage } from "../shared/protocol.ts";
 import type { RegisteredMessage, RequestMessage } from "../shared/types.ts";
@@ -11,29 +11,58 @@ type StartClientOptions = {
   target: string;
 };
 
+type RequestLog = ReturnType<typeof taskLog>;
+
 export async function startClient(options: StartClientOptions): Promise<void> {
   const targetUrl = normalizeTarget(options.target);
   const wsUrl = buildWebSocketUrl(options.server);
-  const spinner = ora(`Connecting to ${wsUrl.host}`).start();
+  let activeRequestLog: RequestLog | undefined;
+  const spin = spinner({
+    onCancel: () => {
+      activeRequestLog?.success("Tunnel stopped", { showLog: true });
+      console.log("");
+      outro("Disconnected");
+    },
+    cancelMessage: "Tunnel stopped",
+  });
 
-  await connectLoop(wsUrl, options.token, targetUrl, spinner);
+  spin.start(`Connecting to ${wsUrl.host}`);
+  await connectLoop(wsUrl, options.token, targetUrl, spin, (requestLog) => {
+    activeRequestLog = requestLog;
+  });
 }
 
-async function connectLoop(wsUrl: URL, token: string, targetUrl: URL, spinner: ReturnType<typeof ora>): Promise<void> {
+async function connectLoop(
+  wsUrl: URL,
+  token: string,
+  targetUrl: URL,
+  spin: ReturnType<typeof spinner>,
+  onRequestLog: (requestLog: RequestLog | undefined) => void,
+): Promise<void> {
+  let requestLog: RequestLog | undefined;
+
   while (true) {
     try {
-      await runSession(wsUrl, token, targetUrl, spinner);
+      requestLog = await runSession(wsUrl, token, targetUrl, spin, requestLog);
+      onRequestLog(requestLog);
       return;
     } catch (error) {
+      onRequestLog(requestLog);
       const message = error instanceof Error ? error.message : String(error);
-      spinner.fail(message);
+      spin.error(message);
       await Bun.sleep(CLIENT_RECONNECT_DELAY_MS);
-      spinner.start(`Reconnecting to ${wsUrl.host}`);
+      spin.start(`Reconnecting to ${wsUrl.host}`);
     }
   }
 }
 
-async function runSession(wsUrl: URL, token: string, targetUrl: URL, spinner: ReturnType<typeof ora>): Promise<void> {
+async function runSession(
+  wsUrl: URL,
+  token: string,
+  targetUrl: URL,
+  spin: ReturnType<typeof spinner>,
+  requestLog: RequestLog | undefined,
+): Promise<RequestLog | undefined> {
   const socket = new WebSocket(wsUrl);
 
   await new Promise<void>((resolve, reject) => {
@@ -56,14 +85,18 @@ async function runSession(wsUrl: URL, token: string, targetUrl: URL, spinner: Re
       }
 
       if (message.type === "registered") {
-        handleRegistered(message, targetUrl, spinner);
+        requestLog = handleRegistered(message, targetUrl, spin);
         return;
       }
 
       if (message.type === "request") {
+        if (!requestLog) {
+          requestLog = createRequestLog();
+        }
+
         const startedAt = Date.now();
         const response = await forwardRequest(targetUrl, message);
-        logForwardedRequest(message, response, Date.now() - startedAt);
+        logForwardedRequest(requestLog, message, response, Date.now() - startedAt);
         socket.send(encodeMessage(response));
         return;
       }
@@ -85,14 +118,26 @@ async function runSession(wsUrl: URL, token: string, targetUrl: URL, spinner: Re
       reject(new Error("WebSocket error"));
     });
   });
+
+  return requestLog;
 }
 
-function handleRegistered(message: RegisteredMessage, targetUrl: URL, spinner: ReturnType<typeof ora>): void {
-  spinner.succeed(`Assigned URL ${chalk.cyan(message.url)}`);
-  console.log(chalk.gray(`Forwarding to ${targetUrl.toString()}`));
+function handleRegistered(message: RegisteredMessage, targetUrl: URL, spin: ReturnType<typeof spinner>): RequestLog {
+  spin.clear();
+  log.success(`Assigned URL ${chalk.cyan(message.url)}`);
+  log.info(chalk.dim(`Forwarding to ${targetUrl.toString()}`));
+  return createRequestLog();
+}
+
+function createRequestLog(): RequestLog {
+  return taskLog({
+    title: "Requests",
+    retainLog: true,
+  });
 }
 
 function logForwardedRequest(
+  requestLog: RequestLog,
   request: RequestMessage,
   response: { status: number; bodyBase64?: string },
   durationMs: number,
@@ -104,7 +149,7 @@ function logForwardedRequest(
   const duration = chalk.gray(`${String(durationMs).padStart(4, " ")}ms`);
   const size = formatResponseSize(response);
 
-  console.log(`${timestamp} ${method} ${path} ${status} ${duration} ${size}`);
+  requestLog.message(`${timestamp} ${method} ${path} ${status} ${duration} ${size}`);
 }
 
 function formatTimestamp(date: Date): string {
