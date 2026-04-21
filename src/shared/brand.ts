@@ -25,7 +25,9 @@ function pickStop(gradient: readonly number[], index: number, total: number) {
 
 export function renderBrandIntro(version: string): void {
   const lines = BRAND_LINES.map((line) => line.replace("{version}", version));
-  const gradient = INTRO_GRADIENTS[Math.floor(Math.random() * INTRO_GRADIENTS.length)] ?? INTRO_GRADIENTS[0];
+  const gradient =
+    INTRO_GRADIENTS[Math.floor(Math.random() * INTRO_GRADIENTS.length)] ??
+    INTRO_GRADIENTS[0];
 
   const rendered = lines
     .map((line, i) => {
@@ -41,5 +43,5 @@ export function renderBrandIntro(version: string): void {
     })
     .join("\n");
 
-  intro(rendered);
+  intro(rendered, { withGuide: true });
 }

@@ -12,6 +12,7 @@ export function httpCommand(): Command {
     .alias("share")
     .description("Expose a local HTTP target")
     .argument("<target>", "Local target, e.g. :8000 or https://whatever.test")
+    .option("--qr", "Show a QR code for the public URL")
     .option("--server <server>", "Server URL, e.g. https://share.example.com")
     .action(async (target, options) => {
       renderBrandIntro(VERSION);
@@ -21,6 +22,7 @@ export function httpCommand(): Command {
       const token = await loadOrPromptClientToken();
 
       await startClient({
+        qr: Boolean(options.qr),
         target: String(target),
         server,
         token,

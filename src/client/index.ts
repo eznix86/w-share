@@ -1,11 +1,13 @@
 import chalk from "chalk";
 import { log, outro, spinner, taskLog } from "@clack/prompts";
+import { renderUnicodeCompact } from "uqr";
 import { CLIENT_RECONNECT_DELAY_MS, MAX_HTTP_BODY_BYTES, PING_INTERVAL_MS, WS_PATH } from "../shared/constants.ts";
 import { decodeMessage, encodeMessage } from "../shared/protocol.ts";
 import type { RegisteredMessage, RequestMessage } from "../shared/types.ts";
 import { base64ToUint8Array, bodyToBase64, normalizeTarget, sanitizeResponseHeaders } from "../shared/utils.ts";
 
 type StartClientOptions = {
+  qr: boolean;
   server: string;
   token: string;
   target: string;
@@ -27,7 +29,7 @@ export async function startClient(options: StartClientOptions): Promise<void> {
   });
 
   spin.start(`Connecting to ${wsUrl.host}`);
-  await connectLoop(wsUrl, options.token, targetUrl, spin, (requestLog) => {
+  await connectLoop(wsUrl, options.token, targetUrl, options.qr, spin, (requestLog) => {
     activeRequestLog = requestLog;
   });
 }
@@ -36,6 +38,7 @@ async function connectLoop(
   wsUrl: URL,
   token: string,
   targetUrl: URL,
+  showQr: boolean,
   spin: ReturnType<typeof spinner>,
   onRequestLog: (requestLog: RequestLog | undefined) => void,
 ): Promise<void> {
@@ -43,7 +46,7 @@ async function connectLoop(
 
   while (true) {
     try {
-      requestLog = await runSession(wsUrl, token, targetUrl, spin, requestLog);
+      requestLog = await runSession(wsUrl, token, targetUrl, showQr, spin, requestLog);
       onRequestLog(requestLog);
       return;
     } catch (error) {
@@ -60,6 +63,7 @@ async function runSession(
   wsUrl: URL,
   token: string,
   targetUrl: URL,
+  showQr: boolean,
   spin: ReturnType<typeof spinner>,
   requestLog: RequestLog | undefined,
 ): Promise<RequestLog | undefined> {
@@ -85,7 +89,7 @@ async function runSession(
       }
 
       if (message.type === "registered") {
-        requestLog = handleRegistered(message, targetUrl, spin);
+        requestLog = handleRegistered(message, targetUrl, spin, showQr);
         return;
       }
 
@@ -122,11 +126,29 @@ async function runSession(
   return requestLog;
 }
 
-function handleRegistered(message: RegisteredMessage, targetUrl: URL, spin: ReturnType<typeof spinner>): RequestLog {
+function handleRegistered(
+  message: RegisteredMessage,
+  targetUrl: URL,
+  spin: ReturnType<typeof spinner>,
+  showQr: boolean,
+): RequestLog {
   spin.clear();
   log.success(`Assigned URL ${chalk.cyan(message.url)}`);
+
+  if (showQr) {
+    log.message(renderQrCode(message.url));
+  }
+
   log.info(chalk.dim(`Forwarding to ${targetUrl.toString()}`));
   return createRequestLog();
+}
+
+function renderQrCode(url: string): string {
+  return renderUnicodeCompact(url, {
+    border: 1,
+    blackChar: "█",
+    whiteChar: " ",
+  });
 }
 
 function createRequestLog(): RequestLog {
