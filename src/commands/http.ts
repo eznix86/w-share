@@ -12,7 +12,7 @@ export function httpCommand(): Command {
     .alias("share")
     .description("Expose a local HTTP target")
     .argument("<target>", "Local target, e.g. :8000 or https://whatever.test")
-    .option("--qr", "Show a QR code for the public URL")
+    .option("--qr", "Show a terminal QR code for the public URL")
     .option("--server <server>", "Server URL, e.g. https://share.example.com")
     .action(async (target, options) => {
       renderBrandIntro(VERSION);

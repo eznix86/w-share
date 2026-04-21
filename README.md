@@ -37,9 +37,12 @@ export PATH="$HOME/.local/bin:$PATH"
 ```bash
 w http :8000
 w http https://awesome-local-website.localhost
+w share :8000 --qr
 ```
 
 The client prompts for the server URL and shared token on first run and stores them in `~/.config/w-share/config.json`.
+
+Use `--qr` to print a terminal QR code for the assigned public URL.
 
 To update the saved client configuration later:
 
