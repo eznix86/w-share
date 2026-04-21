@@ -199,6 +199,5 @@ jobs:
           tag_name: ${{ github.ref_name }}
           make_latest: true
           draft: false
+          generate_release_notes: true
           files: ${{ runner.temp }}/binaries/*
-          body: |
-            Automated release for ${{ github.ref_name }}.
