@@ -6,12 +6,15 @@ export type ClientData = {
   basicAuth?: {
     username: string;
     password: string;
+  };
+  ipAddress: string;
   registered: boolean;
   subdomain: string;
   registeredAt: number;
 };
 
 type PendingRequest = {
+  socket: TunnelWebSocket;
   resolve: (response: Response) => void;
   timeout: Timer;
 };
