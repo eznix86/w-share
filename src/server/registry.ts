@@ -46,7 +46,7 @@ export class Registry {
     return this.clients.get(subdomain);
   }
 
-  createPendingRequest(requestId: string): Promise<Response> {
+  createPendingRequest(requestId: string, socket: TunnelWebSocket): Promise<Response> {
     if (this.pending.size >= MAX_PENDING_REQUESTS) {
       return Promise.resolve(new Response("Server is busy", { status: 503 }));
     }
@@ -57,14 +57,18 @@ export class Registry {
         resolve(new Response("Upstream timeout", { status: 504 }));
       }, DEFAULT_REQUEST_TIMEOUT_MS);
 
-      this.pending.set(requestId, { resolve, timeout });
+      this.pending.set(requestId, { socket, resolve, timeout });
     });
   }
 
-  resolvePendingRequest(requestId: string, response: Response): void {
+  resolvePendingRequest(requestId: string, socket: TunnelWebSocket, response: Response): void {
     const pending = this.pending.get(requestId);
 
     if (!pending) {
+      return;
+    }
+
+    if (pending.socket !== socket) {
       return;
     }
 
@@ -73,7 +77,15 @@ export class Registry {
     pending.resolve(response);
   }
 
-  failPendingRequestsForClient(_socket: TunnelWebSocket): void {
-    // MVP: requests are correlated only by id, so we only fail on timeout.
+  failPendingRequestsForClient(socket: TunnelWebSocket): void {
+    for (const [requestId, pending] of this.pending.entries()) {
+      if (pending.socket !== socket) {
+        continue;
+      }
+
+      clearTimeout(pending.timeout);
+      this.pending.delete(requestId);
+      pending.resolve(new Response("Tunnel disconnected", { status: 502 }));
+    }
   }
 }
