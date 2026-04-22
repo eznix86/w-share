@@ -22,11 +22,27 @@ export class Registry {
   private readonly clients = new Map<string, TunnelWebSocket>();
   private readonly pending = new Map<string, PendingRequest>();
 
-  registerClient(socket: TunnelWebSocket): { subdomain: string } {
+  registerClient(socket: TunnelWebSocket, options?: { basicAuth?: ClientData["basicAuth"]; subdomain?: string }): { subdomain: string } {
     const existing = new Set(this.clients.keys());
-    const subdomain = generateSecureSubdomain(existing);
+    const requestedSubdomain = options?.subdomain?.trim().toLowerCase();
+
+    if (requestedSubdomain) {
+      const validationError = validateRequestedSubdomain(requestedSubdomain);
+
+      if (validationError) {
+        throw new Error(validationError);
+      }
+
+      if (existing.has(requestedSubdomain)) {
+        throw new Error("Requested name is already in use");
+      }
+    }
+
+    const subdomain = requestedSubdomain || generateSecureSubdomain(existing);
 
     socket.data = {
+      basicAuth: options?.basicAuth,
+      ipAddress: socket.data.ipAddress,
       registered: true,
       subdomain,
       registeredAt: Date.now(),

@@ -21,6 +21,14 @@ type StartClientOptions = {
 type RequestLog = ReturnType<typeof taskLog>;
 
 export async function startClient(options: StartClientOptions): Promise<void> {
+  if (options.subdomain) {
+    const validationError = validateRequestedSubdomain(options.subdomain);
+
+    if (validationError) {
+      throw new Error(validationError);
+    }
+  }
+
   const targetUrl = normalizeTarget(options.target);
   const wsUrl = buildWebSocketUrl(options.server);
   let activeRequestLog: RequestLog | undefined;
@@ -53,7 +61,7 @@ async function connectLoop(
 
   while (true) {
     try {
-      requestLog = await runSession(wsUrl, token, targetUrl, showQr, spin, requestLog);
+      requestLog = await runSession(wsUrl, token, targetUrl, basicAuth, subdomain, showQr, spin, requestLog);
       onRequestLog(requestLog);
       return;
     } catch (error) {
