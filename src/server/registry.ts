@@ -1,14 +1,20 @@
 import type { ServerWebSocket } from "bun";
 import { DEFAULT_REQUEST_TIMEOUT_MS, MAX_PENDING_REQUESTS } from "../shared/constants.ts";
-import { generateSecureSubdomain } from "../shared/utils.ts";
+import { generateSecureSubdomain, validateRequestedSubdomain } from "../shared/utils.ts";
 
 export type ClientData = {
+  basicAuth?: {
+    username: string;
+    password: string;
+  };
+  ipAddress: string;
   registered: boolean;
   subdomain: string;
   registeredAt: number;
 };
 
 type PendingRequest = {
+  socket: TunnelWebSocket;
   resolve: (response: Response) => void;
   timeout: Timer;
 };
@@ -19,11 +25,27 @@ export class Registry {
   private readonly clients = new Map<string, TunnelWebSocket>();
   private readonly pending = new Map<string, PendingRequest>();
 
-  registerClient(socket: TunnelWebSocket): { subdomain: string } {
+  registerClient(socket: TunnelWebSocket, options?: { basicAuth?: ClientData["basicAuth"]; subdomain?: string }): { subdomain: string } {
     const existing = new Set(this.clients.keys());
-    const subdomain = generateSecureSubdomain(existing);
+    const requestedSubdomain = options?.subdomain?.trim().toLowerCase();
+
+    if (requestedSubdomain) {
+      const validationError = validateRequestedSubdomain(requestedSubdomain);
+
+      if (validationError) {
+        throw new Error(validationError);
+      }
+
+      if (existing.has(requestedSubdomain)) {
+        throw new Error("Requested name is already in use");
+      }
+    }
+
+    const subdomain = requestedSubdomain || generateSecureSubdomain(existing);
 
     socket.data = {
+      basicAuth: options?.basicAuth,
+      ipAddress: socket.data.ipAddress,
       registered: true,
       subdomain,
       registeredAt: Date.now(),
@@ -46,7 +68,7 @@ export class Registry {
     return this.clients.get(subdomain);
   }
 
-  createPendingRequest(requestId: string): Promise<Response> {
+  createPendingRequest(requestId: string, socket: TunnelWebSocket): Promise<Response> {
     if (this.pending.size >= MAX_PENDING_REQUESTS) {
       return Promise.resolve(new Response("Server is busy", { status: 503 }));
     }
@@ -57,14 +79,18 @@ export class Registry {
         resolve(new Response("Upstream timeout", { status: 504 }));
       }, DEFAULT_REQUEST_TIMEOUT_MS);
 
-      this.pending.set(requestId, { resolve, timeout });
+      this.pending.set(requestId, { socket, resolve, timeout });
     });
   }
 
-  resolvePendingRequest(requestId: string, response: Response): void {
+  resolvePendingRequest(requestId: string, socket: TunnelWebSocket, response: Response): void {
     const pending = this.pending.get(requestId);
 
     if (!pending) {
+      return;
+    }
+
+    if (pending.socket !== socket) {
       return;
     }
 
@@ -73,7 +99,15 @@ export class Registry {
     pending.resolve(response);
   }
 
-  failPendingRequestsForClient(_socket: TunnelWebSocket): void {
-    // MVP: requests are correlated only by id, so we only fail on timeout.
+  failPendingRequestsForClient(socket: TunnelWebSocket): void {
+    for (const [requestId, pending] of this.pending.entries()) {
+      if (pending.socket !== socket) {
+        continue;
+      }
+
+      clearTimeout(pending.timeout);
+      this.pending.delete(requestId);
+      pending.resolve(new Response("Tunnel disconnected", { status: 502 }));
+    }
   }
 }

@@ -16,6 +16,22 @@ export function generateSecureSubdomain(existing: Set<string>): string {
   return crypto.randomUUID().replace(/-/g, "");
 }
 
+export function validateRequestedSubdomain(value: string): string | null {
+  if (value.length < 3 || value.length > 63) {
+    return "--name must be between 3 and 63 characters";
+  }
+
+  if (!/^[a-z0-9-]+$/.test(value)) {
+    return "--name must contain only lowercase letters, numbers, and hyphens";
+  }
+
+  if (value.startsWith("-") || value.endsWith("-")) {
+    return "--name cannot start or end with a hyphen";
+  }
+
+  return null;
+}
+
 export function normalizeTarget(target: string): URL {
   const trimmed = target.trim();
 

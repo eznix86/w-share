@@ -4,9 +4,14 @@ import { renderUnicodeCompact } from "uqr";
 import { CLIENT_RECONNECT_DELAY_MS, MAX_HTTP_BODY_BYTES, PING_INTERVAL_MS, WS_PATH } from "../shared/constants.ts";
 import { decodeMessage, encodeMessage } from "../shared/protocol.ts";
 import type { RegisteredMessage, RequestMessage } from "../shared/types.ts";
-import { base64ToUint8Array, bodyToBase64, normalizeTarget, sanitizeResponseHeaders } from "../shared/utils.ts";
+import { base64ToUint8Array, bodyToBase64, normalizeTarget, sanitizeResponseHeaders, validateRequestedSubdomain } from "../shared/utils.ts";
 
 type StartClientOptions = {
+  basicAuth?: {
+    username: string;
+    password: string;
+  };
+  subdomain?: string;
   qr: boolean;
   server: string;
   token: string;
@@ -16,6 +21,14 @@ type StartClientOptions = {
 type RequestLog = ReturnType<typeof taskLog>;
 
 export async function startClient(options: StartClientOptions): Promise<void> {
+  if (options.subdomain) {
+    const validationError = validateRequestedSubdomain(options.subdomain);
+
+    if (validationError) {
+      throw new Error(validationError);
+    }
+  }
+
   const targetUrl = normalizeTarget(options.target);
   const wsUrl = buildWebSocketUrl(options.server);
   let activeRequestLog: RequestLog | undefined;
@@ -29,7 +42,7 @@ export async function startClient(options: StartClientOptions): Promise<void> {
   });
 
   spin.start(`Connecting to ${wsUrl.host}`);
-  await connectLoop(wsUrl, options.token, targetUrl, options.qr, spin, (requestLog) => {
+  await connectLoop(wsUrl, options.token, targetUrl, options.basicAuth, options.subdomain, options.qr, spin, (requestLog) => {
     activeRequestLog = requestLog;
   });
 }
@@ -38,6 +51,8 @@ async function connectLoop(
   wsUrl: URL,
   token: string,
   targetUrl: URL,
+  basicAuth: StartClientOptions["basicAuth"],
+  subdomain: StartClientOptions["subdomain"],
   showQr: boolean,
   spin: ReturnType<typeof spinner>,
   onRequestLog: (requestLog: RequestLog | undefined) => void,
@@ -46,7 +61,7 @@ async function connectLoop(
 
   while (true) {
     try {
-      requestLog = await runSession(wsUrl, token, targetUrl, showQr, spin, requestLog);
+      requestLog = await runSession(wsUrl, token, targetUrl, basicAuth, subdomain, showQr, spin, requestLog);
       onRequestLog(requestLog);
       return;
     } catch (error) {
@@ -63,6 +78,8 @@ async function runSession(
   wsUrl: URL,
   token: string,
   targetUrl: URL,
+  basicAuth: StartClientOptions["basicAuth"],
+  subdomain: StartClientOptions["subdomain"],
   showQr: boolean,
   spin: ReturnType<typeof spinner>,
   requestLog: RequestLog | undefined,
@@ -73,7 +90,7 @@ async function runSession(
     let heartbeat: Timer | undefined;
 
     socket.addEventListener("open", () => {
-      socket.send(encodeMessage({ type: "register", token }));
+      socket.send(encodeMessage({ type: "register", token, basicAuth, subdomain }));
       heartbeat = setInterval(() => {
         if (socket.readyState === WebSocket.OPEN) {
           socket.send(encodeMessage({ type: "ping" }));

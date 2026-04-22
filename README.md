@@ -37,12 +37,18 @@ export PATH="$HOME/.local/bin:$PATH"
 ```bash
 w http :8000
 w http https://awesome-local-website.localhost
+w share :8000 --name docs
 w share :8000 --qr
+w share :8000 --auth
 ```
 
 The client prompts for the server URL and shared token on first run and stores them in `~/.config/w-share/config.json`.
 
 Use `--qr` to print a terminal QR code for the assigned public URL.
+Use `--name` to request a custom public subdomain like `docs.share.domain.tld`.
+Use `--auth` to protect the public URL with Basic Auth. Pass `username:password` inline or omit the value to be prompted.
+
+The prompt form is recommended so credentials do not end up in your shell history.
 
 To update the saved client configuration later:
 

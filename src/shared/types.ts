@@ -3,6 +3,11 @@ import { z } from "zod";
 export type RegisterMessage = {
   type: "register";
   token: string;
+  basicAuth?: {
+    username: string;
+    password: string;
+  };
+  subdomain?: string;
 };
 
 export type AuthCheckMessage = {
@@ -62,6 +67,11 @@ export const authCheckMessageSchema = z.object({
 export const registerMessageSchema = z.object({
   type: z.literal("register"),
   token: z.string().min(1),
+  basicAuth: z.object({
+    username: z.string().min(1),
+    password: z.string().min(1),
+  }).optional(),
+  subdomain: z.string().min(1).optional(),
 });
 
 export const authOkMessageSchema = z.object({
