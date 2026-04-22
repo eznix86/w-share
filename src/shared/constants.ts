@@ -5,3 +5,7 @@ export const MAX_HTTP_BODY_BYTES = 1_048_576;
 export const WS_PATH = "/ws";
 export const PING_INTERVAL_MS = 15_000;
 export const CLIENT_RECONNECT_DELAY_MS = 2_000;
+export const WS_UPGRADE_RATE_LIMIT_MAX = 20;
+export const WS_UPGRADE_RATE_LIMIT_WINDOW_MS = 60_000;
+export const WS_AUTH_FAILURE_LIMIT_MAX = 10;
+export const WS_AUTH_FAILURE_LIMIT_WINDOW_MS = 300_000;

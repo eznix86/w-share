@@ -249,18 +249,35 @@ function handleRegister(
   message: RegisterMessage,
   registry: Registry,
   options: StartServerOptions,
+  authFailureRateLimiter: FixedWindowRateLimiter,
 ): void {
-  if (!authenticateSocket(socket, message.token, options)) {
+  if (!authenticateSocket(socket, message.token, options, authFailureRateLimiter)) {
     return;
   }
+
+  authFailureRateLimiter.reset(socket.data.ipAddress);
 
   if (socket.data?.registered) {
     socket.send(encodeMessage({ type: "error", code: "ALREADY_REGISTERED", message: "Client already registered" }));
     return;
   }
 
-  const { subdomain } = registry.registerClient(socket);
+  let subdomain = "";
+
+  try {
+    ({ subdomain } = registry.registerClient(socket, {
+      basicAuth: message.basicAuth,
+      subdomain: message.subdomain,
+    }));
+  } catch (error) {
+    const messageText = error instanceof Error ? error.message : "Unable to register tunnel";
+    socket.send(encodeMessage({ type: "error", code: "REGISTER_FAILED", message: messageText }));
+    return;
+  }
+
   socket.data = {
+    basicAuth: message.basicAuth,
+    ipAddress: socket.data.ipAddress,
     registered: true,
     subdomain,
     registeredAt: Date.now(),
@@ -524,9 +541,55 @@ function handleResponse(socket: TunnelWebSocket, message: ResponseMessage, regis
 
   registry.resolvePendingRequest(
     message.id,
+    socket,
     new Response(base64ToUint8Array(message.bodyBase64), {
       status: message.status,
       headers,
     }),
   );
+}
+
+function authenticateTunnelRequest(request: Request, socket: TunnelWebSocket): Response | null {
+  const basicAuth = socket.data.basicAuth;
+
+  if (!basicAuth) {
+    return null;
+  }
+
+  const header = request.headers.get("authorization");
+  if (!header?.startsWith("Basic ")) {
+    return basicAuthChallenge();
+  }
+
+  const encoded = header.slice("Basic ".length).trim();
+  let decoded = "";
+
+  try {
+    decoded = Buffer.from(encoded, "base64").toString("utf8");
+  } catch {
+    return basicAuthChallenge();
+  }
+
+  const separatorIndex = decoded.indexOf(":");
+  if (separatorIndex === -1) {
+    return basicAuthChallenge();
+  }
+
+  const username = decoded.slice(0, separatorIndex);
+  const password = decoded.slice(separatorIndex + 1);
+
+  if (username !== basicAuth.username || password !== basicAuth.password) {
+    return basicAuthChallenge();
+  }
+
+  return null;
+}
+
+function basicAuthChallenge(): Response {
+  return new Response("Unauthorized", {
+    status: 401,
+    headers: {
+      "www-authenticate": 'Basic realm="w-share"',
+    },
+  });
 }

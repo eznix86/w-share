@@ -3,6 +3,11 @@ import { z } from "zod";
 export type RegisterMessage = {
   type: "register";
   token: string;
+  basicAuth?: {
+    username: string;
+    password: string;
+  };
+  subdomain?: string;
 };
 
 export type AuthCheckMessage = {

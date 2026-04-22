@@ -1,8 +1,11 @@
 import type { ServerWebSocket } from "bun";
 import { DEFAULT_REQUEST_TIMEOUT_MS, MAX_PENDING_REQUESTS } from "../shared/constants.ts";
-import { generateSecureSubdomain } from "../shared/utils.ts";
+import { generateSecureSubdomain, validateRequestedSubdomain } from "../shared/utils.ts";
 
 export type ClientData = {
+  basicAuth?: {
+    username: string;
+    password: string;
   registered: boolean;
   subdomain: string;
   registeredAt: number;
