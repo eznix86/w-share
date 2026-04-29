@@ -7,6 +7,24 @@ ASSET_BINARY_NAME="w"
 INSTALL_DIR="${W_INSTALL_DIR:-$HOME/.local/bin}"
 VERSION="${1:-${W_VERSION:-}}"
 
+if [ -t 2 ] && [ -z "${NO_COLOR:-}" ]; then
+  USE_TUI=1
+  DIM='\033[2m'
+  GREEN='\033[32m'
+  RED='\033[31m'
+  BLUE='\033[34m'
+  RESET='\033[0m'
+  CLEAR_LINE='\033[2K'
+else
+  USE_TUI=0
+  DIM=''
+  GREEN=''
+  RED=''
+  BLUE=''
+  RESET=''
+  CLEAR_LINE=''
+fi
+
 usage() {
   printf 'Usage: %s [tag]\n' "$0" >&2
   printf 'Example: %s v1.0.1-alpha.0\n' "$0" >&2
@@ -22,25 +40,97 @@ need_cmd() {
 }
 
 step() {
-  printf '==> %s\n' "$1" >&2
+  printf '%b==>%b %s\n' "$BLUE" "$RESET" "$1" >&2
+}
+
+success() {
+  printf '%b✓%b %s\n' "$GREEN" "$RESET" "$1" >&2
+}
+
+fail() {
+  printf '%b✗%b %s\n' "$RED" "$RESET" "$1" >&2
+}
+
+spinner_frame() {
+  case "$1" in
+    0) printf '⠋' ;;
+    1) printf '⠙' ;;
+    2) printf '⠹' ;;
+    3) printf '⠸' ;;
+    4) printf '⠼' ;;
+    5) printf '⠴' ;;
+    6) printf '⠦' ;;
+    7) printf '⠧' ;;
+    8) printf '⠇' ;;
+    *) printf '⠏' ;;
+  esac
+}
+
+run_with_spinner() {
+  MESSAGE="$1"
+  shift
+
+  if [ "$USE_TUI" -ne 1 ]; then
+    step "$MESSAGE"
+    "$@"
+    return
+  fi
+
+  "$@" &
+  PID="$!"
+  FRAME=0
+
+  while kill -0 "$PID" >/dev/null 2>&1; do
+    printf '\r%b%s%b %s' "$BLUE" "$(spinner_frame "$FRAME")" "$RESET" "$MESSAGE" >&2
+    FRAME=$(( (FRAME + 1) % 10 ))
+    sleep 0.08
+  done
+
+  if wait "$PID"; then
+    printf '\r%b%b✓%b %s\n' "$CLEAR_LINE" "$GREEN" "$RESET" "$MESSAGE" >&2
+    return 0
+  fi
+
+  printf '\r%b%b✗%b %s\n' "$CLEAR_LINE" "$RED" "$RESET" "$MESSAGE" >&2
+  return 1
+}
+
+download() {
+  MESSAGE="$1"
+  URL="$2"
+  OUTPUT="$3"
+
+  if [ "$USE_TUI" -ne 1 ]; then
+    step "$MESSAGE"
+    curl -fL "$URL" -o "$OUTPUT"
+    return
+  fi
+
+  printf '%b↓%b %s\n' "$BLUE" "$RESET" "$MESSAGE" >&2
+  if curl -fL --progress-bar "$URL" -o "$OUTPUT"; then
+    success "$MESSAGE"
+    return 0
+  fi
+
+  fail "$MESSAGE"
+  return 1
 }
 
 is_w_share_binary() {
   [ -x "$1" ] || return 1
 
-  "$1" --help 2>/dev/null | grep -Eq 'Lightweight HTTP tunnel for local sites|Show the installed w version'
+  "$1" --help 2>/dev/null | grep -Eq 'Lightweight HTTP tunnel for local sites|Show the installed w(-share)? version'
 }
 
-remove_legacy_linux_binary() {
-  if [ "$PLATFORM" != "linux" ] || [ "$BINARY_NAME" = "w" ]; then
+remove_legacy_binary() {
+  if [ "$BINARY_NAME" = "w" ]; then
     return
   fi
 
   LEGACY_BINARY_PATH="$INSTALL_DIR/w"
 
   if is_w_share_binary "$LEGACY_BINARY_PATH"; then
-    step "Removing legacy Linux command at $LEGACY_BINARY_PATH"
-    rm -f "$LEGACY_BINARY_PATH"
+    run_with_spinner "Removing legacy command at $LEGACY_BINARY_PATH" rm -f "$LEGACY_BINARY_PATH"
   fi
 }
 
@@ -77,14 +167,7 @@ case "$ARCH" in
     ;;
 esac
 
-case "$PLATFORM" in
-  linux)
-    BINARY_NAME="${W_BINARY_NAME:-w-share}"
-    ;;
-  *)
-    BINARY_NAME="${W_BINARY_NAME:-w}"
-    ;;
-esac
+BINARY_NAME="${W_BINARY_NAME:-w-share}"
 
 ASSET="$ASSET_BINARY_NAME-$PLATFORM-$TARGET_ARCH"
 CHECKSUMS_ASSET="checksums-sha256.txt"
@@ -101,17 +184,15 @@ cleanup() {
 
 trap cleanup EXIT INT TERM
 
-mkdir -p "$INSTALL_DIR"
-remove_legacy_linux_binary
+run_with_spinner "Preparing install directory" mkdir -p "$INSTALL_DIR"
+remove_legacy_binary
 
 ASSET_PATH="$TMP_DIR/$ASSET"
 CHECKSUMS_PATH="$TMP_DIR/$CHECKSUMS_ASSET"
 
-step "Downloading $ASSET from $OWNER_REPO"
-curl -fL "$DOWNLOAD_BASE/$ASSET" -o "$ASSET_PATH"
+download "Downloading $ASSET from $OWNER_REPO" "$DOWNLOAD_BASE/$ASSET" "$ASSET_PATH"
 
-step "Downloading $CHECKSUMS_ASSET"
-curl -fL "$DOWNLOAD_BASE/$CHECKSUMS_ASSET" -o "$CHECKSUMS_PATH"
+download "Downloading $CHECKSUMS_ASSET" "$DOWNLOAD_BASE/$CHECKSUMS_ASSET" "$CHECKSUMS_PATH"
 
 EXPECTED_SHA="$(grep "  $ASSET$" "$CHECKSUMS_PATH" | awk '{ print $1 }')"
 
@@ -136,12 +217,13 @@ if [ "$EXPECTED_SHA" != "$ACTUAL_SHA" ]; then
   exit 1
 fi
 
-chmod 755 "$ASSET_PATH"
-step "Installing $BINARY_NAME to $INSTALL_DIR"
-cp "$ASSET_PATH" "$INSTALL_DIR/$BINARY_NAME"
-chmod 755 "$INSTALL_DIR/$BINARY_NAME"
+success "Checksum verified"
 
-printf 'Installed %s to %s\n' "$BINARY_NAME" "$INSTALL_DIR/$BINARY_NAME"
+run_with_spinner "Preparing executable" chmod 755 "$ASSET_PATH"
+run_with_spinner "Installing $BINARY_NAME to $INSTALL_DIR" cp "$ASSET_PATH" "$INSTALL_DIR/$BINARY_NAME"
+run_with_spinner "Setting executable permissions" chmod 755 "$INSTALL_DIR/$BINARY_NAME"
+
+printf '\n%bInstalled%b %s to %s\n' "$GREEN" "$RESET" "$BINARY_NAME" "$INSTALL_DIR/$BINARY_NAME"
 
 case ":$PATH:" in
   *":$INSTALL_DIR:"*)

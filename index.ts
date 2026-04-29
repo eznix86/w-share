@@ -23,12 +23,12 @@ async function main(): Promise<void> {
   const program = new Command();
 
   program
-    .name("w")
+    .name("w-share")
     .description("Lightweight HTTP tunnel for local sites");
 
   program
     .command("version")
-    .description("Show the installed w version")
+    .description("Show the installed w-share version")
     .action(async () => {
       printVersion();
       await renderUpdateNotice(VERSION);
