@@ -1,5 +1,6 @@
 import semver from "semver";
 import { log } from "@clack/prompts";
+import chalk from "chalk";
 import { leadingVersionPrefixPattern } from "./regexp.ts";
 
 const RELEASES_LATEST_URL = "https://github.com/eznix86/w-share/releases/latest";
@@ -44,5 +45,5 @@ export async function renderUpdateNotice(currentVersion: string): Promise<void> 
     return;
   }
 
-  log.warn(`Update available: ${latestVersion}. Run w-share update to install it.`);
+  log.warn(`Update available: ${latestVersion}. Run ${chalk.cyan("w-share update")} to update it.`);
 }
