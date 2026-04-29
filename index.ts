@@ -5,6 +5,7 @@ import { configCommand } from "./src/commands/config.ts";
 import { httpCommand } from "./src/commands/http.ts";
 import { renderBrandIntro } from "./src/shared/brand.ts";
 import { serveCommand } from "./src/commands/serve.ts";
+import { updateCommand } from "./src/commands/update.ts";
 import { renderUpdateNotice } from "./src/shared/update-notice.ts";
 import { VERSION } from "./src/shared/version.ts";
 
@@ -36,6 +37,7 @@ async function main(): Promise<void> {
   program.addCommand(serveCommand());
   program.addCommand(httpCommand());
   program.addCommand(configCommand());
+  program.addCommand(updateCommand());
 
   await program.parseAsync(process.argv);
 }

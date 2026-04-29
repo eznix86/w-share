@@ -3,7 +3,7 @@
 set -eu
 
 OWNER_REPO="eznix86/w-share"
-BINARY_NAME="w"
+ASSET_BINARY_NAME="w"
 INSTALL_DIR="${W_INSTALL_DIR:-$HOME/.local/bin}"
 VERSION="${1:-${W_VERSION:-}}"
 
@@ -11,7 +11,7 @@ usage() {
   printf 'Usage: %s [tag]\n' "$0" >&2
   printf 'Example: %s v1.0.1-alpha.0\n' "$0" >&2
   printf 'If no tag is provided, the latest release is installed.\n' >&2
-  printf 'You can also set W_VERSION and optionally W_INSTALL_DIR.\n' >&2
+  printf 'You can also set W_VERSION, W_INSTALL_DIR, and W_BINARY_NAME.\n' >&2
 }
 
 need_cmd() {
@@ -23,6 +23,25 @@ need_cmd() {
 
 step() {
   printf '==> %s\n' "$1" >&2
+}
+
+is_w_share_binary() {
+  [ -x "$1" ] || return 1
+
+  "$1" --help 2>/dev/null | grep -Eq 'Lightweight HTTP tunnel for local sites|Show the installed w version'
+}
+
+remove_legacy_linux_binary() {
+  if [ "$PLATFORM" != "linux" ] || [ "$BINARY_NAME" = "w" ]; then
+    return
+  fi
+
+  LEGACY_BINARY_PATH="$INSTALL_DIR/w"
+
+  if is_w_share_binary "$LEGACY_BINARY_PATH"; then
+    step "Removing legacy Linux command at $LEGACY_BINARY_PATH"
+    rm -f "$LEGACY_BINARY_PATH"
+  fi
 }
 
 need_cmd curl
@@ -58,7 +77,16 @@ case "$ARCH" in
     ;;
 esac
 
-ASSET="$BINARY_NAME-$PLATFORM-$TARGET_ARCH"
+case "$PLATFORM" in
+  linux)
+    BINARY_NAME="${W_BINARY_NAME:-w-share}"
+    ;;
+  *)
+    BINARY_NAME="${W_BINARY_NAME:-w}"
+    ;;
+esac
+
+ASSET="$ASSET_BINARY_NAME-$PLATFORM-$TARGET_ARCH"
 CHECKSUMS_ASSET="checksums-sha256.txt"
 if [ -n "$VERSION" ]; then
   DOWNLOAD_BASE="https://github.com/$OWNER_REPO/releases/download/$VERSION"
@@ -74,6 +102,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 mkdir -p "$INSTALL_DIR"
+remove_legacy_linux_binary
 
 ASSET_PATH="$TMP_DIR/$ASSET"
 CHECKSUMS_PATH="$TMP_DIR/$CHECKSUMS_ASSET"

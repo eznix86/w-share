@@ -8,9 +8,13 @@ A self-hosted alternative to ngrok to tunnel local HTTP to the web.
 
 ### Install
 
-The release installer downloads the matching macOS or Linux binary for your machine, verifies it with `checksums-sha256.txt`, and installs it to `~/.local/bin/w` by default.
+The release installer downloads the matching macOS or Linux binary for your machine and verifies it with `checksums-sha256.txt`. It installs to `~/.local/bin/w` on macOS and `~/.local/bin/w-share` on Linux by default.
 
 ```bash
+# macOS: installs as ~/.local/bin/w
+curl -fsSL https://raw.githubusercontent.com/eznix86/w-share/main/install.sh | sh
+
+# Linux: installs as ~/.local/bin/w-share
 curl -fsSL https://raw.githubusercontent.com/eznix86/w-share/main/install.sh | sh
 ```
 
@@ -26,6 +30,12 @@ Override the install directory with `W_INSTALL_DIR` if you want a different targ
 curl -fsSL https://raw.githubusercontent.com/eznix86/w-share/main/install.sh | W_INSTALL_DIR=/usr/local/bin sh -s -- v1.0.1-alpha.0
 ```
 
+Override the installed command name with `W_BINARY_NAME` if needed.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/eznix86/w-share/main/install.sh | W_BINARY_NAME=w sh
+```
+
 If `~/.local/bin` is not already in your `PATH`, add it in your shell profile:
 
 ```bash
@@ -35,11 +45,19 @@ export PATH="$HOME/.local/bin:$PATH"
 ### Expose a local target
 
 ```bash
+# macOS
 w http :8000
 w http https://awesome-local-website.localhost
 w share :8000 --name docs
 w share :8000 --qr
 w share :8000 --auth
+
+# Linux
+w-share http :8000
+w-share http https://awesome-local-website.localhost
+w-share share :8000 --name docs
+w-share share :8000 --qr
+w-share share :8000 --auth
 ```
 
 The client prompts for the server URL and shared token on first run and stores them in `~/.config/w-share/config.json`.
@@ -54,6 +72,26 @@ To update the saved client configuration later:
 
 ```bash
 w config
+```
+
+Update the installed CLI with the latest release:
+
+```bash
+# macOS
+w update
+
+# Linux
+w-share update
+```
+
+Install a specific release with:
+
+```bash
+# macOS
+w update v1.0.4
+
+# Linux
+w-share update v1.0.4
 ```
 
 ## Server
