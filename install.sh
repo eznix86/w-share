@@ -6,10 +6,10 @@ OWNER_REPO="eznix86/w-share"
 ASSET_BINARY_NAME="w"
 INSTALL_DIR="${W_INSTALL_DIR:-$HOME/.local/bin}"
 VERSION="${1:-${W_VERSION:-}}"
+INSTALL_COMPLETIONS="${W_INSTALL_COMPLETIONS:-1}"
 
 if [ -t 2 ] && [ -z "${NO_COLOR:-}" ]; then
   USE_TUI=1
-  DIM='\033[2m'
   GREEN='\033[32m'
   RED='\033[31m'
   BLUE='\033[34m'
@@ -17,7 +17,6 @@ if [ -t 2 ] && [ -z "${NO_COLOR:-}" ]; then
   CLEAR_LINE='\033[2K'
 else
   USE_TUI=0
-  DIM=''
   GREEN=''
   RED=''
   BLUE=''
@@ -29,7 +28,7 @@ usage() {
   printf 'Usage: %s [tag]\n' "$0" >&2
   printf 'Example: %s v1.0.1-alpha.0\n' "$0" >&2
   printf 'If no tag is provided, the latest release is installed.\n' >&2
-  printf 'You can also set W_VERSION, W_INSTALL_DIR, and W_BINARY_NAME.\n' >&2
+  printf 'You can also set W_VERSION, W_INSTALL_DIR, W_BINARY_NAME, and W_INSTALL_COMPLETIONS=0.\n' >&2
 }
 
 need_cmd() {
@@ -117,9 +116,10 @@ download() {
 }
 
 is_w_share_binary() {
+  [ -f "$1" ] || [ -L "$1" ] || return 1
   [ -x "$1" ] || return 1
 
-  "$1" --help 2>/dev/null | grep -Eq 'Lightweight HTTP tunnel for local sites|Show the installed w(-share)? version'
+  "$1" --help 2>/dev/null | grep -Eq 'Usage: w( |$)|Lightweight HTTP tunnel for local sites|Show the installed w version'
 }
 
 remove_legacy_binary() {
@@ -131,6 +131,80 @@ remove_legacy_binary() {
 
   if is_w_share_binary "$LEGACY_BINARY_PATH"; then
     run_with_spinner "Removing legacy command at $LEGACY_BINARY_PATH" rm -f "$LEGACY_BINARY_PATH"
+  fi
+}
+
+append_once() {
+  FILE="$1"
+  MARKER="$2"
+  CONTENT="$3"
+
+  touch "$FILE"
+
+  if grep -Fq "$MARKER" "$FILE"; then
+    return
+  fi
+
+  printf '\n%s\n' "$CONTENT" >> "$FILE"
+}
+
+current_shell_is() {
+  case "${SHELL:-}" in
+    */"$1"|"$1")
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+install_bash_completion() {
+  BASH_COMPLETION_DIR="$HOME/.local/share/bash-completion/completions"
+  run_with_spinner "Installing bash completion" mkdir -p "$BASH_COMPLETION_DIR"
+  "$INSTALL_DIR/$BINARY_NAME" completion bash > "$BASH_COMPLETION_DIR/$BINARY_NAME"
+}
+
+install_zsh_completion() {
+  ZSH_COMPLETION_DIR="$HOME/.zsh/completions"
+  ZSHRC="$HOME/.zshrc"
+  ZSH_MARKER="# w-share completions"
+  ZSH_BLOCK="# w-share completions
+fpath=(\$HOME/.zsh/completions \$fpath)
+autoload -Uz compinit
+compinit
+# end w-share completions"
+
+  run_with_spinner "Installing zsh completion" mkdir -p "$ZSH_COMPLETION_DIR"
+  "$INSTALL_DIR/$BINARY_NAME" completion zsh > "$ZSH_COMPLETION_DIR/_$BINARY_NAME"
+  append_once "$ZSHRC" "$ZSH_MARKER" "$ZSH_BLOCK"
+}
+
+install_fish_completion() {
+  FISH_COMPLETION_DIR="$HOME/.config/fish/completions"
+  run_with_spinner "Installing fish completion" mkdir -p "$FISH_COMPLETION_DIR"
+  "$INSTALL_DIR/$BINARY_NAME" completion fish > "$FISH_COMPLETION_DIR/$BINARY_NAME.fish"
+}
+
+install_completions() {
+  if [ "$INSTALL_COMPLETIONS" = "0" ] || [ "$BINARY_NAME" != "w-share" ]; then
+    return
+  fi
+
+  if ! "$INSTALL_DIR/$BINARY_NAME" completion zsh >/dev/null 2>&1; then
+    return
+  fi
+
+  if current_shell_is bash || [ -d "$HOME/.local/share/bash-completion" ]; then
+    install_bash_completion || true
+  fi
+
+  if current_shell_is zsh || [ -f "$HOME/.zshrc" ] || [ -d "$HOME/.zsh" ]; then
+    install_zsh_completion || true
+  fi
+
+  if current_shell_is fish || [ -d "$HOME/.config/fish" ]; then
+    install_fish_completion || true
   fi
 }
 
@@ -222,6 +296,7 @@ success "Checksum verified"
 run_with_spinner "Preparing executable" chmod 755 "$ASSET_PATH"
 run_with_spinner "Installing $BINARY_NAME to $INSTALL_DIR" cp "$ASSET_PATH" "$INSTALL_DIR/$BINARY_NAME"
 run_with_spinner "Setting executable permissions" chmod 755 "$INSTALL_DIR/$BINARY_NAME"
+install_completions
 
 printf '\n%bInstalled%b %s to %s\n' "$GREEN" "$RESET" "$BINARY_NAME" "$INSTALL_DIR/$BINARY_NAME"
 

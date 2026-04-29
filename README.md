@@ -75,6 +75,34 @@ Install a specific release with:
 w-share update v1.0.4
 ```
 
+### Shell completions
+
+The installer adds completions automatically for detected bash, zsh, and fish setups. Disable this with `W_INSTALL_COMPLETIONS=0` if you prefer to manage completions yourself.
+
+Generate completions manually with:
+
+```bash
+w-share completion bash
+w-share completion zsh
+w-share completion fish
+```
+
+Install them with:
+
+```bash
+# bash
+mkdir -p ~/.local/share/bash-completion/completions
+w-share completion bash > ~/.local/share/bash-completion/completions/w-share
+
+# zsh
+mkdir -p ~/.zsh/completions
+w-share completion zsh > ~/.zsh/completions/_w-share
+
+# fish
+mkdir -p ~/.config/fish/completions
+w-share completion fish > ~/.config/fish/completions/w-share.fish
+```
+
 ## Server
 
 ### Run directly

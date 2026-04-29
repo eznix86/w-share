@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 import { Command } from "commander";
+import { completionCommand } from "./src/commands/completion.ts";
 import { configCommand } from "./src/commands/config.ts";
 import { httpCommand } from "./src/commands/http.ts";
 import { renderBrandIntro } from "./src/shared/brand.ts";
@@ -38,6 +39,7 @@ async function main(): Promise<void> {
   program.addCommand(httpCommand());
   program.addCommand(configCommand());
   program.addCommand(updateCommand());
+  program.addCommand(completionCommand());
 
   await program.parseAsync(process.argv);
 }
