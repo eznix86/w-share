@@ -46,7 +46,7 @@ function bashCompletionScript(): string {
     '  cur="${COMP_WORDS[COMP_CWORD]}"',
     '  prev="${COMP_WORDS[COMP_CWORD-1]}"',
     '  command="${COMP_WORDS[1]}"',
-    '  commands="version serve http share config update completion help"',
+    '  commands="version serve http share config update uninstall completion help"',
     "",
     '  case "$prev" in',
     "    --auth|--domain|--name|--port|--server)",
@@ -55,6 +55,9 @@ function bashCompletionScript(): string {
     "  esac",
     "",
     '  case "$command" in',
+    "    version)",
+    '      options="--json --text --help"',
+    "      ;;",
     "    serve)",
     '      options="--domain --port --help"',
     "      ;;",
@@ -63,6 +66,9 @@ function bashCompletionScript(): string {
     "      ;;",
     "    completion)",
     '      options="bash zsh fish --help"',
+    "      ;;",
+    "    uninstall)",
+    '      options="--purge --help"',
     "      ;;",
     "    *)",
     '      options="$commands --help"',
@@ -90,11 +96,18 @@ _w_share() {
     'share:Expose a local HTTP target'
     'config:Configure the saved client server URL and token'
     'update:Update w-share using the release installer'
+    'uninstall:Uninstall w-share from this machine'
     'completion:Generate shell completion script'
     'help:Display help for command'
   )
 
   case $words[2] in
+    version)
+      _arguments \
+        '--json[Print version information as JSON]' \
+        '--text[Print only the version number]' \
+        '--help[Display help]'
+      ;;
     serve)
       _arguments \
         '--domain[Public wildcard domain]:domain:' \
@@ -112,6 +125,11 @@ _w_share() {
       ;;
     completion)
       _arguments '1:shell:(bash zsh fish)' '--help[Display help]'
+      ;;
+    uninstall)
+      _arguments \
+        '--purge[Also remove saved client configuration]' \
+        '--help[Display help]'
       ;;
     *)
       _arguments '1:command:->command' '--help[Display help]'
@@ -134,7 +152,11 @@ complete -c w-share -f -n '__fish_use_subcommand' -a 'http' -d 'Expose a local H
 complete -c w-share -f -n '__fish_use_subcommand' -a 'share' -d 'Expose a local HTTP target'
 complete -c w-share -f -n '__fish_use_subcommand' -a 'config' -d 'Configure the saved client server URL and token'
 complete -c w-share -f -n '__fish_use_subcommand' -a 'update' -d 'Update w-share using the release installer'
+complete -c w-share -f -n '__fish_use_subcommand' -a 'uninstall' -d 'Uninstall w-share from this machine'
 complete -c w-share -f -n '__fish_use_subcommand' -a 'completion' -d 'Generate shell completion script'
+
+complete -c w-share -n '__fish_seen_subcommand_from version' -l json -d 'Print version information as JSON'
+complete -c w-share -n '__fish_seen_subcommand_from version' -l text -d 'Print only the version number'
 
 complete -c w-share -n '__fish_seen_subcommand_from serve' -l domain -r -d 'Public wildcard domain'
 complete -c w-share -n '__fish_seen_subcommand_from serve' -l port -r -d 'Local listen port'
@@ -145,5 +167,6 @@ complete -c w-share -n '__fish_seen_subcommand_from http share' -l qr -d 'Show a
 complete -c w-share -n '__fish_seen_subcommand_from http share' -l server -r -d 'Server URL'
 
 complete -c w-share -n '__fish_seen_subcommand_from completion' -a 'bash zsh fish'
+complete -c w-share -n '__fish_seen_subcommand_from uninstall' -l purge -d 'Also remove saved client configuration'
 `;
 }

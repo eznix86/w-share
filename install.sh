@@ -199,15 +199,15 @@ install_completions() {
     return
   fi
 
-  if current_shell_is bash || [ -d "$HOME/.local/share/bash-completion" ]; then
+  if current_shell_is bash; then
     install_bash_completion || true
   fi
 
-  if current_shell_is zsh || [ -f "$HOME/.zshrc" ] || [ -d "$HOME/.zsh" ]; then
+  if current_shell_is zsh; then
     install_zsh_completion || true
   fi
 
-  if current_shell_is fish || [ -d "$HOME/.config/fish" ]; then
+  if current_shell_is fish; then
     install_fish_completion || true
   fi
 }
@@ -218,6 +218,15 @@ installed_version() {
   fi
 
   "$INSTALL_DIR/$BINARY_NAME" version --text 2>/dev/null || true
+}
+
+install_binary() {
+  DESTINATION="$INSTALL_DIR/$BINARY_NAME"
+  TEMP_DESTINATION="$INSTALL_DIR/.$BINARY_NAME.tmp.$$"
+
+  cp "$ASSET_PATH" "$TEMP_DESTINATION"
+  chmod 755 "$TEMP_DESTINATION"
+  mv -f "$TEMP_DESTINATION" "$DESTINATION"
 }
 
 need_cmd curl
@@ -266,6 +275,7 @@ TMP_DIR="$(mktemp -d)"
 
 cleanup() {
   rm -rf "$TMP_DIR"
+  rm -f "$INSTALL_DIR/.$BINARY_NAME.tmp.$$"
 }
 
 trap cleanup EXIT INT TERM
@@ -305,9 +315,7 @@ fi
 
 success "Checksum verified"
 
-run_with_spinner "Preparing executable" chmod 755 "$ASSET_PATH"
-run_with_spinner "Installing $BINARY_NAME to $INSTALL_DIR" cp "$ASSET_PATH" "$INSTALL_DIR/$BINARY_NAME"
-run_with_spinner "Setting executable permissions" chmod 755 "$INSTALL_DIR/$BINARY_NAME"
+run_with_spinner "Installing $BINARY_NAME to $INSTALL_DIR" install_binary
 install_completions
 
 INSTALLED_VERSION="$(installed_version)"
