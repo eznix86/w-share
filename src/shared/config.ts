@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { WS_PATH } from "./constants.ts";
 import { decodeMessage, encodeMessage } from "./protocol.ts";
+import { httpUrlPattern, websocketUrlPattern } from "./regexp.ts";
 import { renderBrandIntro } from "./brand.ts";
 import { clientConfigSchema } from "./types.ts";
 import { renderUpdateNotice } from "./update-notice.ts";
@@ -217,13 +218,13 @@ async function validateToken(server: string, token: string): Promise<void> {
 function buildWebSocketUrl(server: string): URL {
   const input = server.trim();
 
-  if (/^wss?:\/\//i.test(input)) {
+  if (websocketUrlPattern.test(input)) {
     const url = new URL(input);
     url.pathname = WS_PATH;
     return url;
   }
 
-  if (/^https?:\/\//i.test(input)) {
+  if (httpUrlPattern.test(input)) {
     const url = new URL(input);
     url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
     url.pathname = WS_PATH;

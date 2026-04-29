@@ -119,7 +119,11 @@ is_w_share_binary() {
   [ -f "$1" ] || [ -L "$1" ] || return 1
   [ -x "$1" ] || return 1
 
-  "$1" --help 2>/dev/null | grep -Eq 'Usage: w( |$)|Lightweight HTTP tunnel for local sites|Show the installed w version'
+  HELP_OUTPUT="$("$1" --help 2>/dev/null || true)"
+
+  printf '%s' "$HELP_OUTPUT" | grep -Fq 'Lightweight HTTP tunnel for local sites' \
+    || printf '%s' "$HELP_OUTPUT" | grep -Fq 'Show the installed w version' \
+    || printf '%s' "$HELP_OUTPUT" | grep -Fq 'Usage: w '
 }
 
 remove_legacy_binary() {
@@ -208,6 +212,14 @@ install_completions() {
   fi
 }
 
+installed_version() {
+  if [ ! -x "$INSTALL_DIR/$BINARY_NAME" ]; then
+    return
+  fi
+
+  "$INSTALL_DIR/$BINARY_NAME" version --text 2>/dev/null || true
+}
+
 need_cmd curl
 need_cmd awk
 need_cmd grep
@@ -268,7 +280,7 @@ download "Downloading $ASSET from $OWNER_REPO" "$DOWNLOAD_BASE/$ASSET" "$ASSET_P
 
 download "Downloading $CHECKSUMS_ASSET" "$DOWNLOAD_BASE/$CHECKSUMS_ASSET" "$CHECKSUMS_PATH"
 
-EXPECTED_SHA="$(grep "  $ASSET$" "$CHECKSUMS_PATH" | awk '{ print $1 }')"
+EXPECTED_SHA="$(awk -v asset="$ASSET" '$2 == asset { print $1 }' "$CHECKSUMS_PATH")"
 
 if [ -z "$EXPECTED_SHA" ]; then
   printf 'error: could not find checksum for %s in %s\n' "$ASSET" "$CHECKSUMS_ASSET" >&2
@@ -298,7 +310,13 @@ run_with_spinner "Installing $BINARY_NAME to $INSTALL_DIR" cp "$ASSET_PATH" "$IN
 run_with_spinner "Setting executable permissions" chmod 755 "$INSTALL_DIR/$BINARY_NAME"
 install_completions
 
-printf '\n%bInstalled%b %s to %s\n' "$GREEN" "$RESET" "$BINARY_NAME" "$INSTALL_DIR/$BINARY_NAME"
+INSTALLED_VERSION="$(installed_version)"
+
+if [ -n "$INSTALLED_VERSION" ]; then
+  printf '\n%bInstalled%b %s %s to %s\n' "$GREEN" "$RESET" "$BINARY_NAME" "$INSTALLED_VERSION" "$INSTALL_DIR/$BINARY_NAME"
+else
+  printf '\n%bInstalled%b %s to %s\n' "$GREEN" "$RESET" "$BINARY_NAME" "$INSTALL_DIR/$BINARY_NAME"
+fi
 
 case ":$PATH:" in
   *":$INSTALL_DIR:"*)

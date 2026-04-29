@@ -1,10 +1,11 @@
 import semver from "semver";
 import { log } from "@clack/prompts";
+import { leadingVersionPrefixPattern } from "./regexp.ts";
 
 const RELEASES_LATEST_URL = "https://github.com/eznix86/w-share/releases/latest";
 
 function normalizeVersion(value: string): string | null {
-  return semver.valid(value.replace(/^v/, ""));
+  return semver.valid(value.replace(leadingVersionPrefixPattern, ""));
 }
 
 function shouldShowUpdate(currentVersion: string, latestVersion: string): boolean {

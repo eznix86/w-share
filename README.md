@@ -63,6 +63,13 @@ To update the saved client configuration later:
 w-share config
 ```
 
+Print the installed version for scripts with:
+
+```bash
+w-share version --json
+w-share version --text
+```
+
 Update the installed CLI with the latest release:
 
 ```bash
@@ -73,6 +80,18 @@ Install a specific release with:
 
 ```bash
 w-share update v1.0.4
+```
+
+Uninstall the CLI, installed completions, and legacy `w` binary if it belongs to this project:
+
+```bash
+w-share uninstall
+```
+
+Also remove saved client configuration with:
+
+```bash
+w-share uninstall --purge
 ```
 
 ### Shell completions

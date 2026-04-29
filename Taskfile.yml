@@ -19,7 +19,7 @@ vars:
 
   LOCAL_BINARY:
     sh: |
-      printf "%s/.local/bin/w" "$HOME"
+      printf "%s/.local/bin/w-share" "$HOME"
 
   FULL_IMAGE: "{{.REGISTRY}}/{{.IMAGE_NAME}}:{{.TAG}}"
 

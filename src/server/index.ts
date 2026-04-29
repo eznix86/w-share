@@ -9,6 +9,7 @@ import {
   WS_UPGRADE_RATE_LIMIT_WINDOW_MS,
 } from "../shared/constants.ts";
 import { decodeMessage, encodeMessage } from "../shared/protocol.ts";
+import { colonPattern, trailingColonPattern, wrappingDoubleQuotePattern } from "../shared/regexp.ts";
 import type { AuthCheckMessage, RegisterMessage, ResponseMessage } from "../shared/types.ts";
 import { base64ToUint8Array, bodyToBase64, getSubdomainFromHost, randomId, sanitizeHeaders } from "../shared/utils.ts";
 import { logger } from "./logger.ts";
@@ -156,7 +157,7 @@ export function startServer(options: StartServerOptions): ServerHandle {
 
         const headers = sanitizeHeaders(request.headers);
         headers["x-forwarded-host"] = host;
-        headers["x-forwarded-proto"] = url.protocol.replace(/:$/, "");
+        headers["x-forwarded-proto"] = url.protocol.replace(trailingColonPattern, "");
         headers["x-forwarded-port"] = url.port || (url.protocol === "https:" ? "443" : "80");
 
         const payload = {
@@ -438,7 +439,7 @@ function getForwardedHeaderClientIp(forwarded: string | null): string | null {
 }
 
 function normalizeForwardedHeaderValue(value: string): string | null {
-  const trimmed = value.trim().replace(/^"|"$/g, "");
+  const trimmed = value.trim().replace(wrappingDoubleQuotePattern, "");
 
   if (!trimmed || trimmed.toLowerCase() === "unknown") {
     return null;
@@ -453,7 +454,7 @@ function normalizeForwardedHeaderValue(value: string): string | null {
     return normalizeIpAddress(trimmed.slice(1, closingIndex));
   }
 
-  const colonCount = (trimmed.match(/:/g) ?? []).length;
+  const colonCount = (trimmed.match(colonPattern) ?? []).length;
   if (colonCount === 1 && trimmed.includes(".")) {
     return normalizeIpAddress(trimmed.split(":", 1)[0]);
   }

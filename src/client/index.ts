@@ -3,6 +3,7 @@ import { log, outro, spinner, taskLog } from "@clack/prompts";
 import { renderUnicodeCompact } from "uqr";
 import { CLIENT_RECONNECT_DELAY_MS, MAX_HTTP_BODY_BYTES, PING_INTERVAL_MS, WS_PATH } from "../shared/constants.ts";
 import { decodeMessage, encodeMessage } from "../shared/protocol.ts";
+import { httpUrlPattern, websocketUrlPattern } from "../shared/regexp.ts";
 import type { RegisteredMessage, RequestMessage } from "../shared/types.ts";
 import { base64ToUint8Array, bodyToBase64, normalizeTarget, sanitizeResponseHeaders, validateRequestedSubdomain } from "../shared/utils.ts";
 
@@ -163,8 +164,6 @@ function handleRegistered(
 function renderQrCode(url: string): string {
   return renderUnicodeCompact(url, {
     border: 1,
-    blackChar: "█",
-    whiteChar: " ",
   });
 }
 
@@ -361,11 +360,11 @@ function shouldRetryWithInsecureLocalTls(url: URL, error: unknown): boolean {
 function buildWebSocketUrl(server: string): URL {
   const input = server.trim();
 
-  if (/^wss?:\/\//i.test(input)) {
+  if (websocketUrlPattern.test(input)) {
     return new URL(input);
   }
 
-  if (/^https?:\/\//i.test(input)) {
+  if (httpUrlPattern.test(input)) {
     const url = new URL(input);
     url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
     url.pathname = WS_PATH;

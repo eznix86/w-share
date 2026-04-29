@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { hostWithPortPattern, httpUrlPattern, uuidHyphenPattern, validSubdomainPattern } from "./regexp.ts";
 
 export function randomId(length = 8): string {
   return crypto.randomBytes(length).toString("hex").slice(0, length);
@@ -13,7 +14,7 @@ export function generateSecureSubdomain(existing: Set<string>): string {
     }
   }
 
-  return crypto.randomUUID().replace(/-/g, "");
+  return crypto.randomUUID().replace(uuidHyphenPattern, "");
 }
 
 export function validateRequestedSubdomain(value: string): string | null {
@@ -21,7 +22,7 @@ export function validateRequestedSubdomain(value: string): string | null {
     return "--name must be between 3 and 63 characters";
   }
 
-  if (!/^[a-z0-9-]+$/.test(value)) {
+  if (!validSubdomainPattern.test(value)) {
     return "--name must contain only lowercase letters, numbers, and hyphens";
   }
 
@@ -39,11 +40,11 @@ export function normalizeTarget(target: string): URL {
     return new URL(`http://127.0.0.1${trimmed}`);
   }
 
-  if (/^https?:\/\//i.test(trimmed)) {
+  if (httpUrlPattern.test(trimmed)) {
     return new URL(trimmed);
   }
 
-  if (/^[^:\/]+:\d+$/.test(trimmed)) {
+  if (hostWithPortPattern.test(trimmed)) {
     return new URL(`http://${trimmed}`);
   }
 
