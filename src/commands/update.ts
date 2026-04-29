@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import os from "node:os";
+import { leadingVersionPrefixPattern } from "../shared/regexp.ts";
 import { VERSION } from "../shared/version.ts";
 
 const INSTALL_SCRIPT_URL = "https://raw.githubusercontent.com/eznix86/w-share/main/install.sh";
@@ -13,16 +14,34 @@ export function updateCommand(): Command {
     .action(async (tag?: string) => {
       ensureSupportedPlatform();
 
+      const targetVersion = tag ? normalizeVersion(tag) : await fetchLatestVersion();
+      const currentVersion = installedVersionText() ?? VERSION;
+      if (targetVersion && normalizeVersion(currentVersion) === targetVersion) {
+        console.log(`w-share ${currentVersion} is already installed`);
+        return;
+      }
+
       const script = await downloadInstallScript();
       await runInstallScript(script, tag);
 
       const installedVersion = installedVersionText();
       if (installedVersion) {
-        console.log(`Updated w-share from ${VERSION} to ${installedVersion}`);
+        console.log(`Updated w-share from ${currentVersion} to ${installedVersion}`);
       }
     });
 
   return command;
+}
+
+function normalizeVersion(version: string): string {
+  return version.replace(leadingVersionPrefixPattern, "");
+}
+
+async function fetchLatestVersion(): Promise<string | undefined> {
+  const response = await fetch("https://github.com/eznix86/w-share/releases/latest", { redirect: "follow" });
+  const tag = response.url.split("/").pop();
+
+  return tag ? normalizeVersion(tag) : undefined;
 }
 
 function installedVersionText(): string | undefined {

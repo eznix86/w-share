@@ -220,6 +220,42 @@ installed_version() {
   "$INSTALL_DIR/$BINARY_NAME" version --text 2>/dev/null || true
 }
 
+normalize_version() {
+  case "$1" in
+    v*)
+      printf '%s' "${1#v}"
+      ;;
+    *)
+      printf '%s' "$1"
+      ;;
+  esac
+}
+
+resolve_target_version() {
+  if [ -n "$VERSION" ]; then
+    normalize_version "$VERSION"
+    return
+  fi
+
+  LATEST_URL="$(curl -fsL -o /dev/null -w '%{url_effective}' "https://github.com/$OWNER_REPO/releases/latest")"
+  LATEST_TAG="${LATEST_URL##*/}"
+
+  normalize_version "$LATEST_TAG"
+}
+
+skip_if_already_installed() {
+  CURRENT_VERSION="$(installed_version)"
+
+  if [ -z "$CURRENT_VERSION" ] || [ -z "$TARGET_VERSION" ]; then
+    return
+  fi
+
+  if [ "$(normalize_version "$CURRENT_VERSION")" = "$(normalize_version "$TARGET_VERSION")" ]; then
+    success "$BINARY_NAME $CURRENT_VERSION is already installed"
+    exit 0
+  fi
+}
+
 install_binary() {
   DESTINATION="$INSTALL_DIR/$BINARY_NAME"
   TEMP_DESTINATION="$INSTALL_DIR/.$BINARY_NAME.tmp.$$"
@@ -266,8 +302,10 @@ BINARY_NAME="${W_BINARY_NAME:-w-share}"
 
 ASSET="$ASSET_BINARY_NAME-$PLATFORM-$TARGET_ARCH"
 CHECKSUMS_ASSET="checksums-sha256.txt"
-if [ -n "$VERSION" ]; then
-  DOWNLOAD_BASE="https://github.com/$OWNER_REPO/releases/download/$VERSION"
+TARGET_VERSION="$(resolve_target_version)"
+
+if [ -n "$TARGET_VERSION" ]; then
+  DOWNLOAD_BASE="https://github.com/$OWNER_REPO/releases/download/v$TARGET_VERSION"
 else
   DOWNLOAD_BASE="https://github.com/$OWNER_REPO/releases/latest/download"
 fi
@@ -282,6 +320,7 @@ trap cleanup EXIT INT TERM
 
 run_with_spinner "Preparing install directory" mkdir -p "$INSTALL_DIR"
 remove_legacy_binary
+skip_if_already_installed
 
 ASSET_PATH="$TMP_DIR/$ASSET"
 CHECKSUMS_PATH="$TMP_DIR/$CHECKSUMS_ASSET"
