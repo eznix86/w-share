@@ -43,5 +43,5 @@ export async function renderUpdateNotice(currentVersion: string): Promise<void> 
     return;
   }
 
-  log.warn(`Update available: ${latestVersion}`);
+  log.warn(`Update available: ${latestVersion}. Run w-share update to install it.`);
 }
