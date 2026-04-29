@@ -4,11 +4,43 @@
 
 A self-hosted alternative to ngrok to tunnel local HTTP to the web.
 
+## Comparison
+
+| Feature | w-share | ngrok | Cloudflare Tunnel | localhost.run | serveo.net |
+| --- | --- | --- | --- | --- | --- |
+| Self-hosted | ✅ Yes | ❌ No | ❌ No | ❌ No | ❌ No |
+| No account required | ✅ Yes | ❌ No | ❌ No | ✅ Yes | ✅ Yes |
+| Own domain control | ✅ Yes | ⚠️ Optional | ✅ Yes | ⚠️ Optional | ⚠️ Optional |
+| Custom subdomains | ✅ | ⚠️ Plan-based | ✅ | ⚠️ Limited | ⚠️ Limited |
+| Authentication | ✅* | ⚠️ Plan/config | ⚠️ Access config | ❌ | ❌ |
+| Session duration | ✅ Unlimited | ✅ No timeout | ✅ Persistent | ⚠️ Not stated | ⚠️ Not stated |
+| QR sharing | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Server control | ✅ Full | ⚠️ Limited | ⚠️ Cloudflare-managed | ❌ | ❌ |
+
+
+* `w-share` supports Basic Auth per tunnel.
+
+
+`w-share` is best when you want a small tunnel server under your own control. Hosted tools are usually easier to start with, but depend on third-party infrastructure and account limits.
+
+## Table of contents
+
+- [Client](#client)
+  - [Install](#install)
+  - [Expose a local target](#expose-a-local-target)
+  - [Shell completions](#shell-completions)
+- [Comparison](#comparison)
+- [Server](#server)
+  - [Run directly](#run-directly)
+  - [Docker Compose](#docker-compose)
+  - [Kubernetes](#kubernetes)
+- [License](#license)
+
 ## Client
 
 ### Install
 
-The release installer downloads the matching macOS or Linux binary for your machine and verifies it with `checksums-sha256.txt`. It installs to `~/.local/bin/w-share` by default and removes the old `w` command when it can confirm it belongs to this project.
+The release installer downloads the matching macOS or Linux binary for your machine and verifies it with `checksums-sha256.txt`. It installs to `~/.local/bin/w-share` by default.
 
 ```bash
 # macOS and Linux: installs as ~/.local/bin/w-share
