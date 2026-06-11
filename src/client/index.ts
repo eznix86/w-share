@@ -4,7 +4,7 @@ import { renderUnicodeCompact } from "uqr";
 import { CLIENT_RECONNECT_DELAY_MS, MAX_HTTP_BODY_BYTES, PING_INTERVAL_MS, WS_PATH } from "../shared/constants.ts";
 import { decodeMessage, encodeMessage } from "../shared/protocol.ts";
 import { httpUrlPattern, websocketUrlPattern } from "../shared/regexp.ts";
-import type { RegisteredMessage, RequestMessage } from "../shared/types.ts";
+import type { RegisteredMessage, RequestMessage, WsProxyCloseMessage, WsProxyDataMessage, WsProxyOpenMessage } from "../shared/types.ts";
 import { base64ToUint8Array, bodyToBase64, normalizeTarget, sanitizeResponseHeaders, validateRequestedSubdomain } from "../shared/utils.ts";
 
 type StartClientOptions = {
@@ -20,6 +20,11 @@ type StartClientOptions = {
 };
 
 type RequestLog = ReturnType<typeof taskLog>;
+
+type WsProxyEntry = {
+  localWs: WebSocket | null;
+  buffer: WsProxyDataMessage[];
+};
 
 export async function startClient(options: StartClientOptions): Promise<void> {
   if (options.subdomain) {
@@ -86,6 +91,7 @@ async function runSession(
   requestLog: RequestLog | undefined,
 ): Promise<RequestLog | undefined> {
   const socket = new WebSocket(wsUrl);
+  const wsProxyConnections = new Map<string, WsProxyEntry>();
 
   await new Promise<void>((resolve, reject) => {
     let heartbeat: Timer | undefined;
@@ -120,6 +126,21 @@ async function runSession(
         const response = await forwardRequest(targetUrl, message);
         logForwardedRequest(requestLog, message, response, Date.now() - startedAt);
         socket.send(encodeMessage(response));
+        return;
+      }
+
+      if (message.type === "ws-proxy-open") {
+        handleWsProxyOpen(socket, message, targetUrl, wsProxyConnections);
+        return;
+      }
+
+      if (message.type === "ws-proxy-data") {
+        handleWsProxyData(message, wsProxyConnections);
+        return;
+      }
+
+      if (message.type === "ws-proxy-close") {
+        handleWsProxyClose(message, wsProxyConnections);
         return;
       }
 
@@ -355,6 +376,116 @@ function shouldRetryWithInsecureLocalTls(url: URL, error: unknown): boolean {
     || message.includes("hostname/ip does not match certificate");
 
   return looksLikeLocalDevHost && looksLikeTlsVerificationFailure;
+}
+
+function handleWsProxyOpen(
+  tunnelSocket: WebSocket,
+  message: WsProxyOpenMessage,
+  targetUrl: URL,
+  wsProxyConnections: Map<string, WsProxyEntry>,
+): void {
+  const wsUrl = new URL(message.path, targetUrl);
+  wsUrl.protocol = targetUrl.protocol === "https:" ? "wss:" : "ws:";
+
+  const protocolsHeader = message.headers["sec-websocket-protocol"];
+  const protocols: string[] = protocolsHeader
+    ? protocolsHeader.split(",").map((s) => s.trim()).filter(Boolean)
+    : [];
+
+  const entry: WsProxyEntry = { localWs: null, buffer: [] };
+  wsProxyConnections.set(message.id, entry);
+
+  try {
+    const localWs = new WebSocket(wsUrl.toString(), protocols);
+
+    localWs.addEventListener("open", () => {
+      entry.localWs = localWs;
+
+      for (const buffered of entry.buffer) {
+        const data = base64ToUint8Array(buffered.dataBase64);
+        if (data) {
+          localWs.send(buffered.isBinary ? data : Buffer.from(data).toString("utf8"));
+        }
+      }
+      entry.buffer.length = 0;
+    });
+
+    localWs.addEventListener("message", (event) => {
+      const rawData = event.data as string | Buffer;
+      const isBinary = typeof rawData !== "string";
+      const dataBase64 = Buffer.from(isBinary ? rawData : rawData).toString("base64");
+
+      tunnelSocket.send(encodeMessage({
+        type: "ws-proxy-data",
+        id: message.id,
+        dataBase64,
+        isBinary,
+      }));
+    });
+
+    localWs.addEventListener("close", (event) => {
+      wsProxyConnections.delete(message.id);
+      tunnelSocket.send(encodeMessage({
+        type: "ws-proxy-close",
+        id: message.id,
+        code: event.code,
+        reason: event.reason,
+      }));
+    });
+
+    localWs.addEventListener("error", () => {
+      wsProxyConnections.delete(message.id);
+      tunnelSocket.send(encodeMessage({
+        type: "ws-proxy-close",
+        id: message.id,
+      }));
+    });
+  } catch {
+    wsProxyConnections.delete(message.id);
+    tunnelSocket.send(encodeMessage({
+      type: "ws-proxy-close",
+      id: message.id,
+    }));
+  }
+}
+
+function handleWsProxyData(
+  message: WsProxyDataMessage,
+  wsProxyConnections: Map<string, WsProxyEntry>,
+): void {
+  const entry = wsProxyConnections.get(message.id);
+  if (!entry) {
+    return;
+  }
+
+  if (entry.localWs && entry.localWs.readyState === WebSocket.OPEN) {
+    const data = base64ToUint8Array(message.dataBase64);
+    if (data) {
+      entry.localWs.send(message.isBinary ? data : Buffer.from(data).toString("utf8"));
+    }
+  } else {
+    entry.buffer.push(message);
+  }
+}
+
+function handleWsProxyClose(
+  message: WsProxyCloseMessage,
+  wsProxyConnections: Map<string, WsProxyEntry>,
+): void {
+  const entry = wsProxyConnections.get(message.id);
+  if (!entry) {
+    return;
+  }
+
+  wsProxyConnections.delete(message.id);
+
+  if (entry.localWs) {
+    try {
+      entry.localWs.close(message.code, message.reason);
+    } catch {
+      entry.localWs.close();
+    }
+  }
 }
 
 function buildWebSocketUrl(server: string): URL {

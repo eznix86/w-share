@@ -42,6 +42,27 @@ export type ResponseMessage = {
   bodyBase64?: string;
 };
 
+export type WsProxyOpenMessage = {
+  type: "ws-proxy-open";
+  id: string;
+  path: string;
+  headers: Record<string, string>;
+};
+
+export type WsProxyDataMessage = {
+  type: "ws-proxy-data";
+  id: string;
+  dataBase64: string;
+  isBinary: boolean;
+};
+
+export type WsProxyCloseMessage = {
+  type: "ws-proxy-close";
+  id: string;
+  code?: number;
+  reason?: string;
+};
+
 export type ErrorMessage = {
   type: "error";
   message: string;
@@ -52,8 +73,8 @@ export type PingMessage = {
   type: "ping" | "pong";
 };
 
-export type ClientToServerMessage = AuthCheckMessage | RegisterMessage | ResponseMessage | PingMessage;
-export type ServerToClientMessage = AuthOkMessage | RegisteredMessage | RequestMessage | ErrorMessage | PingMessage;
+export type ClientToServerMessage = AuthCheckMessage | RegisterMessage | ResponseMessage | WsProxyDataMessage | WsProxyCloseMessage | PingMessage;
+export type ServerToClientMessage = AuthOkMessage | RegisteredMessage | RequestMessage | WsProxyOpenMessage | WsProxyDataMessage | WsProxyCloseMessage | ErrorMessage | PingMessage;
 
 export type ParsedIncomingMessage = ClientToServerMessage | ServerToClientMessage;
 
@@ -101,6 +122,27 @@ export const responseMessageSchema = z.object({
   bodyBase64: z.string().optional(),
 });
 
+export const wsProxyOpenMessageSchema = z.object({
+  type: z.literal("ws-proxy-open"),
+  id: z.string().min(1),
+  path: z.string().min(1),
+  headers: headersSchema,
+});
+
+export const wsProxyDataMessageSchema = z.object({
+  type: z.literal("ws-proxy-data"),
+  id: z.string().min(1),
+  dataBase64: z.string().min(1),
+  isBinary: z.boolean(),
+});
+
+export const wsProxyCloseMessageSchema = z.object({
+  type: z.literal("ws-proxy-close"),
+  id: z.string().min(1),
+  code: z.number().int().optional(),
+  reason: z.string().optional(),
+});
+
 export const errorMessageSchema = z.object({
   type: z.literal("error"),
   message: z.string().min(1),
@@ -118,6 +160,9 @@ export const parsedIncomingMessageSchema = z.union([
   registeredMessageSchema,
   requestMessageSchema,
   responseMessageSchema,
+  wsProxyOpenMessageSchema,
+  wsProxyDataMessageSchema,
+  wsProxyCloseMessageSchema,
   errorMessageSchema,
   pingMessageSchema,
 ]);

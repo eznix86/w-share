@@ -77,6 +77,40 @@ export function sanitizeHeaders(headers: Headers): Record<string, string> {
   return sanitizeHeadersWithMode(headers, "generic");
 }
 
+export function sanitizeWsProxyHeaders(headers: Headers): Record<string, string> {
+  const blocked = new Set([
+    "connection",
+    "content-length",
+    "content-encoding",
+    "host",
+    "keep-alive",
+    "proxy-authenticate",
+    "proxy-authorization",
+    "te",
+    "trailer",
+    "transfer-encoding",
+    "upgrade",
+    "x-forwarded-for",
+    "x-forwarded-host",
+    "x-forwarded-port",
+    "x-forwarded-proto",
+    "x-real-ip",
+    "cf-connecting-ip",
+    "true-client-ip",
+    "forwarded",
+  ]);
+
+  const result: Record<string, string> = {};
+
+  for (const [key, value] of headers.entries()) {
+    if (!blocked.has(key.toLowerCase())) {
+      result[key] = value;
+    }
+  }
+
+  return result;
+}
+
 export function sanitizeResponseHeaders(headers: Headers): Record<string, string> {
   return sanitizeHeadersWithMode(headers, "response");
 }

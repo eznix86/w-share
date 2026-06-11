@@ -10,8 +10,8 @@ import {
 } from "../shared/constants.ts";
 import { decodeMessage, encodeMessage } from "../shared/protocol.ts";
 import { colonPattern, trailingColonPattern, wrappingDoubleQuotePattern } from "../shared/regexp.ts";
-import type { AuthCheckMessage, RegisterMessage, ResponseMessage } from "../shared/types.ts";
-import { base64ToUint8Array, bodyToBase64, getSubdomainFromHost, randomId, sanitizeHeaders } from "../shared/utils.ts";
+import type { AuthCheckMessage, RegisterMessage, ResponseMessage, WsProxyDataMessage, WsProxyCloseMessage } from "../shared/types.ts";
+import { base64ToUint8Array, bodyToBase64, getSubdomainFromHost, randomId, sanitizeHeaders, sanitizeWsProxyHeaders } from "../shared/utils.ts";
 import { logger } from "./logger.ts";
 import { Registry, type ClientData, type TunnelWebSocket } from "./registry.ts";
 
@@ -34,6 +34,7 @@ type SocketSessionData = {
   registered: boolean;
   subdomain?: string;
   registeredAt?: number;
+  proxyId?: string;
 };
 
 class FixedWindowRateLimiter {
@@ -71,6 +72,8 @@ export function startServer(options: StartServerOptions): ServerHandle {
   const registry = new Registry();
   const wsUpgradeRateLimiter = new FixedWindowRateLimiter(WS_UPGRADE_RATE_LIMIT_MAX, WS_UPGRADE_RATE_LIMIT_WINDOW_MS);
   const wsAuthFailureRateLimiter = new FixedWindowRateLimiter(WS_AUTH_FAILURE_LIMIT_MAX, WS_AUTH_FAILURE_LIMIT_WINDOW_MS);
+
+  const proxyConnections = new Map<string, { browserSocket: ServerWebSocket<SocketSessionData>; tunnelSocket: TunnelWebSocket }>();
 
   const server = Bun.serve<SocketSessionData>({
     port,
@@ -139,6 +142,45 @@ export function startServer(options: StartServerOptions): ServerHandle {
         return authResponse;
       }
 
+      const upgradeHeader = request.headers.get("upgrade")?.toLowerCase();
+      if (upgradeHeader === "websocket") {
+        const requestId = randomId(12);
+        const path = `${url.pathname}${url.search}`;
+
+        const upgraded = server.upgrade(request, {
+          data: {
+            ipAddress: clientIp,
+            registered: false,
+            proxyId: requestId,
+          },
+        });
+
+        if (upgraded) {
+          const proxyHeaders = sanitizeWsProxyHeaders(request.headers);
+          proxyHeaders["x-forwarded-host"] = host;
+          proxyHeaders["x-forwarded-proto"] = url.protocol.replace(trailingColonPattern, "");
+          proxyHeaders["x-forwarded-port"] = url.port || (url.protocol === "https:" ? "443" : "80");
+
+          proxyConnections.set(requestId, { browserSocket: undefined as unknown as ServerWebSocket<SocketSessionData>, tunnelSocket: socket });
+          socket.send(encodeMessage({
+            type: "ws-proxy-open",
+            id: requestId,
+            path,
+            headers: proxyHeaders,
+          }));
+
+          logger.info({
+            event: "ws_proxy_upgraded",
+            client_ip: clientIp,
+            subdomain,
+            request_id: requestId,
+            path,
+          }, "Browser WebSocket upgraded, proxy opened to tunnel");
+
+          return undefined;
+        }
+      }
+
       const contentLength = Number(request.headers.get("content-length") ?? "0");
       if (Number.isFinite(contentLength) && contentLength > MAX_HTTP_BODY_BYTES) {
         return new Response("Payload too large", { status: 413 });
@@ -197,9 +239,38 @@ export function startServer(options: StartServerOptions): ServerHandle {
     },
     websocket: {
       open(socket) {
+        if (socket.data.proxyId) {
+          const entry = proxyConnections.get(socket.data.proxyId);
+          if (entry) {
+            entry.browserSocket = socket;
+          }
+          return;
+        }
+
         socket.subscribe("clients");
       },
       message(socket, rawMessage) {
+        if (socket.data.proxyId) {
+          const entry = proxyConnections.get(socket.data.proxyId);
+          if (!entry) {
+            return;
+          }
+
+          const rawData = rawMessage as string | Buffer;
+          const isBinary = Buffer.isBuffer(rawData);
+          const dataBase64 = Buffer.from(isBinary ? rawData : String(rawData)).toString("base64");
+
+          entry.browserSocket = socket;
+          entry.tunnelSocket.send(encodeMessage({
+            type: "ws-proxy-data" as const,
+            id: socket.data.proxyId,
+            dataBase64,
+            isBinary,
+          }));
+
+          return;
+        }
+
         const message = decodeMessage(rawMessage);
 
         if (!message) {
@@ -223,11 +294,35 @@ export function startServer(options: StartServerOptions): ServerHandle {
           return;
         }
 
+        if (message.type === "ws-proxy-data") {
+          handleWsProxyDataFromClient(message, proxyConnections);
+          return;
+        }
+
+        if (message.type === "ws-proxy-close") {
+          handleWsProxyCloseFromClient(message, proxyConnections);
+          return;
+        }
+
         if (message.type === "ping") {
           socket.send(encodeMessage({ type: "pong" }));
         }
       },
       close(socket) {
+        if (socket.data.proxyId) {
+          const entry = proxyConnections.get(socket.data.proxyId);
+          if (entry) {
+            proxyConnections.delete(socket.data.proxyId);
+            entry.tunnelSocket.send(encodeMessage({
+              type: "ws-proxy-close",
+              id: socket.data.proxyId,
+            }));
+          }
+          return;
+        }
+
+        cleanUpProxyConnectionsForTunnel(asTunnelSocket(socket), proxyConnections);
+
         const tunnelSocket = asTunnelSocket(socket);
         logger.info({
           event: "tunnel_disconnected",
@@ -550,6 +645,39 @@ function handleResponse(socket: TunnelWebSocket, message: ResponseMessage, regis
   );
 }
 
+function handleWsProxyDataFromClient(
+  message: WsProxyDataMessage,
+  proxyConnections: Map<string, { browserSocket: ServerWebSocket<SocketSessionData>; tunnelSocket: TunnelWebSocket }>,
+): void {
+  const entry = proxyConnections.get(message.id);
+  if (!entry?.browserSocket || entry.browserSocket.readyState !== WebSocket.OPEN) {
+    return;
+  }
+
+  const data = base64ToUint8Array(message.dataBase64);
+  if (!data) {
+    return;
+  }
+
+  entry.browserSocket.send(message.isBinary ? data : Buffer.from(data).toString("utf8"));
+}
+
+function handleWsProxyCloseFromClient(
+  message: WsProxyCloseMessage,
+  proxyConnections: Map<string, { browserSocket: ServerWebSocket<SocketSessionData>; tunnelSocket: TunnelWebSocket }>,
+): void {
+  const entry = proxyConnections.get(message.id);
+  if (!entry) {
+    return;
+  }
+
+  proxyConnections.delete(message.id);
+
+  if (entry.browserSocket && entry.browserSocket.readyState === WebSocket.OPEN) {
+    entry.browserSocket.close(message.code, message.reason);
+  }
+}
+
 function authenticateTunnelRequest(request: Request, socket: TunnelWebSocket): Response | null {
   const basicAuth = socket.data.basicAuth;
 
@@ -593,4 +721,19 @@ function basicAuthChallenge(): Response {
       "www-authenticate": 'Basic realm="w-share"',
     },
   });
+}
+
+function cleanUpProxyConnectionsForTunnel(
+  tunnelSocket: TunnelWebSocket,
+  proxyConnections: Map<string, { browserSocket: ServerWebSocket<SocketSessionData>; tunnelSocket: TunnelWebSocket }>,
+): void {
+  for (const [id, entry] of proxyConnections.entries()) {
+    if (entry.tunnelSocket === tunnelSocket) {
+      proxyConnections.delete(id);
+
+      if (entry.browserSocket && entry.browserSocket.readyState === WebSocket.OPEN) {
+        entry.browserSocket.close(1011, "Tunnel disconnected");
+      }
+    }
+  }
 }
