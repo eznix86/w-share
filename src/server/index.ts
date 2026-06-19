@@ -13,6 +13,7 @@ import { colonPattern, trailingColonPattern, wrappingDoubleQuotePattern } from "
 import type { AuthCheckMessage, RegisterMessage, ResponseMessage, WsProxyDataMessage, WsProxyCloseMessage } from "../shared/types.ts";
 import { base64ToUint8Array, bodyToBase64, getSubdomainFromHost, randomId, sanitizeHeaders, sanitizeWsProxyHeaders } from "../shared/utils.ts";
 import { logger } from "./logger.ts";
+import { notFoundImageResponse, notFoundResponse } from "./not-found-page.ts";
 import { Registry, type ClientData, type TunnelWebSocket } from "./registry.ts";
 
 type StartServerOptions = {
@@ -82,6 +83,10 @@ export function startServer(options: StartServerOptions): ServerHandle {
       const url = new URL(request.url);
       const clientIp = getClientIp(server, request);
 
+      if (url.pathname === "/__w-share-404.png") {
+        return notFoundImageResponse();
+      }
+
       if (url.pathname === WS_PATH) {
         if (!wsUpgradeRateLimiter.allow(clientIp)) {
           logger.warn({ event: "ws_upgrade_rate_limited", client_ip: clientIp }, "WebSocket upgrade rate limited");
@@ -127,14 +132,14 @@ export function startServer(options: StartServerOptions): ServerHandle {
         }
 
         logger.info({ event: "root_not_found", client_ip: clientIp, path: url.pathname }, "Root path not found");
-        return new Response("Not found", { status: 404 });
+        return notFoundResponse();
       }
 
       const socket = registry.getClient(subdomain);
 
       if (!socket) {
         logger.info({ event: "subdomain_not_found", client_ip: clientIp, subdomain, path: url.pathname }, "Tunnel subdomain not found");
-        return new Response("Not found", { status: 404 });
+        return notFoundResponse();
       }
 
       const authResponse = authenticateTunnelRequest(request, socket);

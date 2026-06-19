@@ -28,7 +28,7 @@ tasks:
     desc: Build the local macOS standalone binary
     cmds:
       - mkdir -p "$(dirname "{{.LOCAL_BINARY}}")"
-      - bun build --compile --outfile "{{.LOCAL_BINARY}}" ./index.ts
+      - bun build --compile --outfile "{{.LOCAL_BINARY}}" ./index.ts ./public/images/404.png
 
   image:builder:
     desc: Ensure a multi-platform buildx builder exists

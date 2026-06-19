@@ -3,9 +3,10 @@ WORKDIR /app
 
 COPY package.json bun.lock index.ts tsconfig.json ./
 COPY src ./src
+COPY public ./public
 
 RUN bun install --frozen-lockfile
-RUN bun build --compile --outfile /out/w ./index.ts
+RUN bun build --compile --outfile /out/w ./index.ts ./public/images/404.png
 
 FROM gcr.io/distroless/base-debian12:nonroot AS runtime
 WORKDIR /app
