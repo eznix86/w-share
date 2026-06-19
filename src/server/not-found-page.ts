@@ -1,9 +1,19 @@
 // @ts-expect-error - Bun file import resolves to a path inside the standalone binary
-import notFoundImage from "../../public/images/404.png" with { type: "file" };
+import notFoundImage from "./404.webp" with { type: "file" };
 
-const NOT_FOUND_IMAGE_PATH = "/__w-share-404.png";
+let cachedDataUri: string | null = null;
 
-function renderHtml(imagePath: string): string {
+async function loadDataUri(): Promise<string> {
+  if (cachedDataUri !== null) {
+    return cachedDataUri;
+  }
+
+  const bytes = await Bun.file(notFoundImage).arrayBuffer();
+  cachedDataUri = `data:image/webp;base64,${Buffer.from(bytes).toString("base64")}`;
+  return cachedDataUri;
+}
+
+function renderHtml(imageDataUri: string): string {
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -69,7 +79,7 @@ function renderHtml(imagePath: string): string {
     <main class="wrap">
       <div class="frame">
         <div class="inset">
-          <img src="${imagePath}" alt="404 - Page not found" width="1456" height="816" />
+          <img src="${imageDataUri}" alt="404 - Page not found" width="2816" height="1536" />
         </div>
       </div>
       <h1>This page isn't being shared anymore</h1>
@@ -80,21 +90,12 @@ function renderHtml(imagePath: string): string {
 `;
 }
 
-export function notFoundResponse(): Response {
-  return new Response(renderHtml(NOT_FOUND_IMAGE_PATH), {
+export async function notFoundResponse(): Promise<Response> {
+  return new Response(renderHtml(await loadDataUri()), {
     status: 404,
     headers: {
       "content-type": "text/html; charset=utf-8",
       "cache-control": "no-store",
-    },
-  });
-}
-
-export function notFoundImageResponse(): Response {
-  return new Response(Bun.file(notFoundImage), {
-    headers: {
-      "content-type": "image/png",
-      "cache-control": "public, max-age=86400",
     },
   });
 }
