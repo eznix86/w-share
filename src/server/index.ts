@@ -38,6 +38,11 @@ type SocketSessionData = {
   proxyId?: string;
 };
 
+type ProxyConnection = {
+  browserSocket?: ServerWebSocket<SocketSessionData>;
+  tunnelSocket: TunnelWebSocket;
+};
+
 class FixedWindowRateLimiter {
   private readonly entries = new Map<string, { count: number; resetAt: number }>();
 
@@ -74,7 +79,7 @@ export function startServer(options: StartServerOptions): ServerHandle {
   const wsUpgradeRateLimiter = new FixedWindowRateLimiter(WS_UPGRADE_RATE_LIMIT_MAX, WS_UPGRADE_RATE_LIMIT_WINDOW_MS);
   const wsAuthFailureRateLimiter = new FixedWindowRateLimiter(WS_AUTH_FAILURE_LIMIT_MAX, WS_AUTH_FAILURE_LIMIT_WINDOW_MS);
 
-  const proxyConnections = new Map<string, { browserSocket: ServerWebSocket<SocketSessionData>; tunnelSocket: TunnelWebSocket }>();
+  const proxyConnections = new Map<string, ProxyConnection>();
 
   const server = Bun.serve<SocketSessionData>({
     port,
@@ -148,6 +153,8 @@ export function startServer(options: StartServerOptions): ServerHandle {
         const requestId = randomId(12);
         const path = `${url.pathname}${url.search}`;
 
+        proxyConnections.set(requestId, { tunnelSocket: socket });
+
         const upgraded = server.upgrade(request, {
           data: {
             ipAddress: clientIp,
@@ -162,7 +169,6 @@ export function startServer(options: StartServerOptions): ServerHandle {
           proxyHeaders["x-forwarded-proto"] = url.protocol.replace(trailingColonPattern, "");
           proxyHeaders["x-forwarded-port"] = url.port || (url.protocol === "https:" ? "443" : "80");
 
-          proxyConnections.set(requestId, { browserSocket: undefined as unknown as ServerWebSocket<SocketSessionData>, tunnelSocket: socket });
           socket.send(encodeMessage({
             type: "ws-proxy-open",
             id: requestId,
@@ -180,6 +186,8 @@ export function startServer(options: StartServerOptions): ServerHandle {
 
           return undefined;
         }
+
+        proxyConnections.delete(requestId);
       }
 
       const contentLength = Number(request.headers.get("content-length") ?? "0");
@@ -261,7 +269,6 @@ export function startServer(options: StartServerOptions): ServerHandle {
           const isBinary = Buffer.isBuffer(rawData);
           const dataBase64 = Buffer.from(isBinary ? rawData : String(rawData)).toString("base64");
 
-          entry.browserSocket = socket;
           entry.tunnelSocket.send(encodeMessage({
             type: "ws-proxy-data" as const,
             id: socket.data.proxyId,
@@ -648,7 +655,7 @@ function handleResponse(socket: TunnelWebSocket, message: ResponseMessage, regis
 
 function handleWsProxyDataFromClient(
   message: WsProxyDataMessage,
-  proxyConnections: Map<string, { browserSocket: ServerWebSocket<SocketSessionData>; tunnelSocket: TunnelWebSocket }>,
+  proxyConnections: Map<string, ProxyConnection>,
 ): void {
   const entry = proxyConnections.get(message.id);
   if (!entry?.browserSocket || entry.browserSocket.readyState !== WebSocket.OPEN) {
@@ -665,7 +672,7 @@ function handleWsProxyDataFromClient(
 
 function handleWsProxyCloseFromClient(
   message: WsProxyCloseMessage,
-  proxyConnections: Map<string, { browserSocket: ServerWebSocket<SocketSessionData>; tunnelSocket: TunnelWebSocket }>,
+  proxyConnections: Map<string, ProxyConnection>,
 ): void {
   const entry = proxyConnections.get(message.id);
   if (!entry) {
@@ -726,7 +733,7 @@ function basicAuthChallenge(): Response {
 
 function cleanUpProxyConnectionsForTunnel(
   tunnelSocket: TunnelWebSocket,
-  proxyConnections: Map<string, { browserSocket: ServerWebSocket<SocketSessionData>; tunnelSocket: TunnelWebSocket }>,
+  proxyConnections: Map<string, ProxyConnection>,
 ): void {
   for (const [id, entry] of proxyConnections.entries()) {
     if (entry.tunnelSocket === tunnelSocket) {

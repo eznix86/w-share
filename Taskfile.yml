@@ -30,6 +30,10 @@ tasks:
       - mkdir -p "$(dirname "{{.LOCAL_BINARY}}")"
       - bun build --compile --outfile "{{.LOCAL_BINARY}}" ./index.ts ./src/server/404.webp
 
+  test:
+    desc: Run the test suite
+    cmd: bun test
+
   image:builder:
     desc: Ensure a multi-platform buildx builder exists
     cmds:
